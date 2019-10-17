@@ -1,13 +1,13 @@
 import { APIGatewayEvent } from "aws-lambda";
-import * as sut from "../src/index";
+import * as sut from "../src/updateImage";
 
 (async () => {
   try {
-    const res = await sut.lambdaHandler(createEvent({
-      type: "image/jpeg",
-      size: 12000000,
-    }));
-    console.log(res);
+    await sut.lambdaHandler(createEvent({
+      photoId: "2a3f2d1f-0d75-4343-b517-0800c3ed15ad",
+      timestamp: 1571240964315,
+      status: "Uploaded",
+  }));
   } catch (err) {
     console.log(`!!! error -> ${err} !!!`);
   }

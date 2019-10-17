@@ -9,11 +9,12 @@ interface RequestBody {
 }
 
 export async function lambdaHandler(evt: APIGatewayEvent): Promise<APIGatewayProxyResult> {
+  console.log(evt.body);
   const body: RequestBody = JSON.parse(evt.body!);
   if (!validate(body)) {
     return badRequest("Validation error.");
   }
-  Defs.dynamodb.updateItem({
+  await Defs.dynamodb.updateItem({
     TableName: Defs.TABLE_NAME,
     Key: {
       photoId: { S: body.photoId },
@@ -24,13 +25,14 @@ export async function lambdaHandler(evt: APIGatewayEvent): Promise<APIGatewayPro
         Action: "PUT",
       },
     },
-  }, () => {/*dummy*/}).promise();
+  }, () => {/*dummy*/ }).promise();
   return okJson({});
 }
 
 function validate(body: RequestBody): boolean {
-  return !body.photoId
+  const hasError = !body.photoId
     || (body.timestamp === null || body.timestamp === undefined)
     || !body.status
     ;
+  return !hasError;
 }
