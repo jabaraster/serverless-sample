@@ -1,7 +1,8 @@
 import { APIGatewayEvent } from "aws-lambda";
-import * as poster from "../src/postImage";
 import { IPhotoMeta } from "../src/types";
+import * as poster from "../src/postImage";
 import * as updater from "../src/updateImage";
+import * as getter from "../src/getImages";
 
 (async () => {
   try {
@@ -19,6 +20,9 @@ import * as updater from "../src/updateImage";
     }));
     console.log("-----------------------");
     console.log(updateRes);
+
+    console.log("-----------------------");
+    console.log(await getter.lambdaHandler());
 
   } catch (err) {
     console.log(`!!! error -> ${err} !!!`);
