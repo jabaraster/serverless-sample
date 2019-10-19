@@ -1,4 +1,6 @@
-import { APIGatewayEvent, APIGatewayProxyResult } from "aws-lambda";
+import { APIGatewayEvent } from "aws-lambda";
+import { handler2, IApiCoreResult } from "./handler-helper";
+import { IPhotoMeta } from "./types";
 import * as Defs from "./defs";
 import { badRequest, okJson } from "./web-response";
 
@@ -8,25 +10,35 @@ interface RequestBody {
   status: Defs.Status;
 }
 
-export async function lambdaHandler(evt: APIGatewayEvent): Promise<APIGatewayProxyResult> {
-  console.log(evt.body);
+async function core(evt: APIGatewayEvent): Promise<IApiCoreResult<string | IPhotoMeta>> {
   const body: RequestBody = JSON.parse(evt.body!);
   if (!validate(body)) {
-    return badRequest("Validation error.");
+    return {
+      result: "Validation error.",
+      responseFunction: badRequest,
+    }
   }
-  await Defs.dynamodb.updateItem({
+  await Defs.dynamodb.update({
     TableName: Defs.TABLE_NAME,
     Key: {
-      photoId: { S: body.photoId },
+      photoId: body.photoId,
     },
     AttributeUpdates: {
       status: {
-        Value: { S: body.status.toString() },
-        Action: "PUT",
+        Value: body.status,
       },
     },
-  }, () => {/*dummy*/ }).promise();
-  return okJson({});
+  });
+  const res = await Defs.dynamodb.get({
+    TableName: Defs.TABLE_NAME,
+    Key: {
+      photoId: body.photoId,
+    }
+  }).promise();
+  return {
+    result: res.Item as IPhotoMeta,
+    responseFunction: okJson,
+  };
 }
 
 function validate(body: RequestBody): boolean {
@@ -36,3 +48,6 @@ function validate(body: RequestBody): boolean {
     ;
   return !hasError;
 }
+
+const lambdaHandler = handler2(core);
+export { lambdaHandler }

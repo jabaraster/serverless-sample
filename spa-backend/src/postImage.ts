@@ -1,8 +1,10 @@
-import { APIGatewayEvent, APIGatewayProxyResult } from "aws-lambda";
+import { APIGatewayProxyEvent } from "aws-lambda";
 import * as AWS from "aws-sdk";
 import * as uuid from "uuid";
 import * as Defs from "./defs";
-import { badRequest, okJson } from "./web-response";
+import { handler2, IApiCoreResult } from "./handler-helper";
+import { IPhotoMeta } from "./types";
+import { okJson } from "./web-response";
 
 export const generateId = uuid.v4;
 
@@ -19,29 +21,24 @@ interface RequestBody {
   type: string;
   size: number;
 }
-export async function lambdaHandler(evt: APIGatewayEvent): Promise<APIGatewayProxyResult> {
+
+async function core(evt: APIGatewayProxyEvent): Promise<IApiCoreResult<IPhotoMeta>> {
   const body: RequestBody = JSON.parse(evt.body!);
-  const item = {
-    photo_id: { S: generateId() },
-    timestamp: { N: getTimestamp().toString() },
-    status: { S: "Waiting" },
-    type: { S: body.type },
-    size: { N: body.size.toString() },
+  const item: IPhotoMeta = {
+    photoId: generateId(),
+    timestamp: getTimestamp(),
+    status: "Waiting",
+    type: body.type,
+    size: body.size,
   };
-  try {
-    await Defs.dynamodb.putItem({
-      TableName: Defs.TABLE_NAME,
-      Item: item,
-    }, () => {/*dummy*/ }).promise();
-    return okJson({
-      photoId: item.photo_id.S,
-      timestamp: item.timestamp.N,
-      status: item.status.S,
-      type: item.type.S,
-      size: item.size.N,
-      signedUrl: getPresignedUrl(Defs.BUCKET_NAME, item.photo_id.S),
-    });
-  } catch (err) {
-    return badRequest(err);
-  }
+  await Defs.dynamodb.put({
+    TableName: Defs.TABLE_NAME,
+    Item: item,
+  }).promise();
+  return {
+    result: item,
+    responseFunction: okJson,
+  };
 }
+const lambdaHandler = handler2(core);
+export { lambdaHandler };

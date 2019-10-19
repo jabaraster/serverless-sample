@@ -1,13 +1,25 @@
 import { APIGatewayEvent } from "aws-lambda";
-import * as sut from "../src/updateImage";
+import * as poster from "../src/postImage";
+import { IPhotoMeta } from "../src/types";
+import * as updater from "../src/updateImage";
 
 (async () => {
   try {
-    await sut.lambdaHandler(createEvent({
-      photoId: "2a3f2d1f-0d75-4343-b517-0800c3ed15ad",
-      timestamp: 1571240964315,
+    const postRes = await poster.lambdaHandler(createEvent({
+      type: "image/png",
+      size: 100039,
+    }));
+    console.log(postRes);
+
+    const photoMeta: IPhotoMeta = JSON.parse(postRes.body);
+    const updateRes = await updater.lambdaHandler(createEvent({
+      photoId: photoMeta.photoId,
+      timestamp: 10939348,
       status: "Uploaded",
-  }));
+    }));
+    console.log("-----------------------");
+    console.log(updateRes);
+
   } catch (err) {
     console.log(`!!! error -> ${err} !!!`);
   }
