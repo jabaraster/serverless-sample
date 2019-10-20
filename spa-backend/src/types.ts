@@ -6,4 +6,5 @@ export interface IPhotoMeta {
     status: Status;
     timestamp: number;
     type: string;
+    signedUrl: string | undefined;
 }

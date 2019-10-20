@@ -4,6 +4,10 @@ export function ok(body: any, headers: {[key: string]: string} = {}): APIGateway
   return core(200, body, headers);
 }
 
+export function noContent(headers: {[key: string]: string} = {}): APIGatewayProxyResult {
+  return core(204, {}, headers);
+}
+
 export function okJson(body: any, headers: {[key: string]: string} = {}): APIGatewayProxyResult {
   headers["Content-Type"] = "application/json";
   return core(200, body, headers);

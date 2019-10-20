@@ -82,3 +82,23 @@ Resources:
           Properties:
             Path: /image/{id}
             Method: GET
+  deleteImageById:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: dist/src/
+      Handler: deleteImageById.lambdaHandler
+      Runtime: nodejs10.x
+      Description : ""
+      MemorySize: 128
+      Timeout: 15
+      Role: arn:aws:iam::195957709288:role/lambda-dynamodb-access
+      Environment:
+        Variables: 
+          BUCKET_NAME: jabara-serverless-app-photos
+          TABLE_NAME : photos
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /image/{id}
+            Method: DELETE

@@ -30,11 +30,13 @@ async function core(evt: APIGatewayProxyEvent): Promise<IApiCoreResult<IPhotoMet
     status: "Waiting",
     type: body.type,
     size: body.size,
+    signedUrl: undefined,
   };
   await Defs.dynamodb.put({
     TableName: Defs.TABLE_NAME,
     Item: item,
   }).promise();
+  item.signedUrl = getPresignedUrl(Defs.BUCKET_NAME, item.photoId);
   return {
     result: item,
     responseFunction: okJson,

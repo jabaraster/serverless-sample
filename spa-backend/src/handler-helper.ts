@@ -4,7 +4,7 @@ import { internalServerError } from "./web-response";
 export interface IApiCoreResult<R> {
     result?: R;
     responseHeaders?: { [key: string]: string };
-    responseFunction: (body: any, headers?: { [key: string]: string }) => APIGatewayProxyResult;
+    responseFunction: ((body?: any, headers?: { [key: string]: string }) => APIGatewayProxyResult);
 }
 
 export function handler<R>(func: () => Promise<IApiCoreResult<R>>): () => Promise<APIGatewayProxyResult> {
