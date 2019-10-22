@@ -4,3 +4,4 @@ spa-backend/node_modules/
 serverless-spa/.work/
 serverless-spa/elm-stuff/
 serverless-spa/dist/
+spa-backend/debug.log

@@ -2,7 +2,23 @@ AWSTemplateFormatVersion: 2010-09-09
 Transform: AWS::Serverless-2016-10-31
 Description: An AWS Serverless Specification template describing your function.
 Resources:
-  postImages:
+#  optionsImages:
+#    Type: AWS::Serverless::Function
+#    Properties:
+#      CodeUri: dist/src/
+#      Handler: options.lambdaHandler
+#      Runtime: nodejs10.x
+#      Description : ""
+#      MemorySize: 32
+#      Timeout: 3
+#      Role: arn:aws:iam::195957709288:role/lambda-dynamodb-access
+#      Events:
+#        Api:
+#          Type: Api
+#          Properties:
+#            Path: /images
+#            Method: OPTIONS
+  postImage:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: dist/src/
@@ -62,6 +78,22 @@ Resources:
           Properties:
             Path: /images
             Method: GET
+#  optionsImageById:
+#    Type: AWS::Serverless::Function
+#    Properties:
+#      CodeUri: dist/src/
+#      Handler: options.lambdaHandler
+#      Runtime: nodejs10.x
+#      Description : ""
+#      MemorySize: 32
+#      Timeout: 3
+#      Role: arn:aws:iam::195957709288:role/lambda-dynamodb-access
+#      Events:
+#        Api:
+#          Type: Api
+#          Properties:
+#            Path: /image/{id}
+#            Method: OPTIONS
   getImageById:
     Type: AWS::Serverless::Function
     Properties:

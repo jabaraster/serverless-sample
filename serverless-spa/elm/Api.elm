@@ -1,7 +1,9 @@
-module Api exposing (getImages)
+module Api exposing (PostPhotoMeta, encodePostPhotoMeta, getImages, postPhotoMeta, uploadPhotoData, urlPrefix)
 
+import File exposing (File)
 import Http
-import Json.Decode as D
+import Json.Decode as JD
+import Json.Encode as JE
 import Types exposing (..)
 
 
@@ -13,5 +15,42 @@ getImages : (Result Http.Error (List PhotoMeta) -> msg) -> Cmd msg
 getImages operation =
     Http.get
         { url = urlPrefix ++ "images"
-        , expect = Http.expectJson operation <| D.list photoMetaDecoder
+        , expect = Http.expectJson operation <| JD.list photoMetaDecoder
+        }
+
+
+type alias PostPhotoMeta =
+    { imageType : String
+    , size : Int
+    }
+
+
+encodePostPhotoMeta : PostPhotoMeta -> JE.Value
+encodePostPhotoMeta meta =
+    JE.object [ ( "type", JE.string meta.imageType ), ( "size", JE.int meta.size ) ]
+
+
+postPhotoMeta : PostPhotoMeta -> (Result Http.Error PhotoMeta -> msg) -> Cmd msg
+postPhotoMeta meta operation =
+    Http.riskyRequest
+        { url = urlPrefix ++ "images"
+        , body = Http.jsonBody <| encodePostPhotoMeta meta
+        , expect = Http.expectJson operation photoMetaDecoder
+        , method = "POST"
+        , headers = []
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
+uploadPhotoData : String -> PhotoMeta -> (Result Http.Error () -> msg) -> Cmd msg
+uploadPhotoData dataUrl meta operation =
+    Http.request
+        { url = Maybe.withDefault "" meta.signedUrl
+        , method = "PUT"
+        , headers = []
+        , body = Http.stringBody meta.imageType dataUrl
+        , expect = Http.expectWhatever operation
+        , timeout = Nothing
+        , tracker = Nothing
         }

@@ -50,6 +50,9 @@ type Msg
     | ImageRequested
     | ImageSelected File
     | SelectedImageLoaded String
+    | PostPhotoMeta
+    | PostPhotoMetaCompleted (Result Http.Error PhotoMeta)
+    | UploadPhotoCompleted (Result Http.Error ())
 
 
 init : () -> Url -> Key -> ( Model, Cmd Msg )
@@ -117,6 +120,30 @@ update msg model =
         SelectedImageLoaded url ->
             ( { model | selectedImageUrl = url }, Cmd.none )
 
+        PostPhotoMeta ->
+            case model.selectedImageFile of
+                Nothing ->
+                    ( model, Cmd.none )
+
+                -- 有り得ない状況
+                Just file ->
+                    ( model
+                    , Api.postPhotoMeta { imageType = File.mime file, size = File.size file } PostPhotoMetaCompleted
+                    )
+
+        PostPhotoMetaCompleted res ->
+            case res of
+                Err _ ->
+                    ( model, Cmd.none )
+
+                Ok meta ->
+                    ( model
+                    , Api.uploadPhotoData model.selectedImageUrl meta UploadPhotoCompleted
+                    )
+
+        UploadPhotoCompleted res ->
+            ( model, Debug.todo "load images" Cmd.none )
+
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
@@ -183,7 +210,7 @@ viewForPage model =
                     -- , input [ type_ "file", placeholder "Photo from your computer", accept "image/*", required True ] []
                     , button [ onClick ImageRequested, class "pure-button" ] [ text "Select" ]
                     , viewPreview model.selectedImageFile model.selectedImageUrl
-                    , button [ class "pure-button pure-button-primary" ] [ text "Upload" ]
+                    , button [ onClick PostPhotoMeta, class "pure-button pure-button-primary" ] [ text "Upload" ]
                     ]
                 ]
     in
@@ -194,7 +221,8 @@ viewForPage model =
                     { title = title
                     , body =
                         [ div [ class "pure-g" ]
-                            [ text "Now loading..."
+                            [ base
+                            , text "Now loading..."
                             , form
                             ]
                         ]

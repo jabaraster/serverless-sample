@@ -13,3 +13,5 @@ aws s3 website s3://jabara-serverless-app-photos/ --index-document index.html
 aws s3api put-bucket-policy --bucket jabara-serverless-app-photos --policy file://spa-backend/policy.json
 
 aws s3 mb s3://jabara-serverless-app-sam
+
+aws s3api put-bucket-cors --bucket jabara-serverless-app-photos --cors-configuration file://cors.json

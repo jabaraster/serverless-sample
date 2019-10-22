@@ -23,6 +23,8 @@ export function internalServerError(body: any): APIGatewayProxyResult {
 
 function core(statusCode: number, body: any, headers: {[key: string]: string}): APIGatewayProxyResult {
   headers["Access-Control-Allow-Origin"] = "*";
+  headers["Access-Control-Allow-Methods"] = "*";
+  headers["Access-Control-Allow-Headers"] = "Content-Type";
   return {
     statusCode,
     headers,
