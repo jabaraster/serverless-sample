@@ -1,5 +1,6 @@
 #!/bin/sh
-\cp -f package.json dist/src/ \
+tsc \
+  && \cp -f package.json dist/src/ \
   && cd dist/src/ \
   && npm install \
   && aws cloudformation package --template-file ../../template.yaml --output-template-file template-output.yaml --s3-bucket jabara-serverless-app-sam \

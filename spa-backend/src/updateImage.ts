@@ -27,6 +27,9 @@ async function core(evt: APIGatewayEvent): Promise<IApiCoreResult<string | IPhot
       status: {
         Value: body.status,
       },
+      timestamp: {
+        Value: body.timestamp,
+      },
     },
   }).promise();
   const res = await Defs.dynamodb.get({

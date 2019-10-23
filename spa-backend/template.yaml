@@ -2,6 +2,37 @@ AWSTemplateFormatVersion: 2010-09-09
 Transform: AWS::Serverless-2016-10-31
 Description: An AWS Serverless Specification template describing your function.
 Resources:
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      Schema:
+      - Name: email
+        StringAttributeConstraints:
+          MinLength: 0
+          MaxLength: 2048
+        Required: true
+        AttributeDataType: String
+        Mutable: true
+      AliasAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      EmailVerificationSubject: Your verification code
+      EmailVerificationMessage: Your app verification code is {####}.
+      MfaConfiguration: "OFF"
+      UserPoolName:
+        Ref: AWS::StackName
+      Policies:
+        PasswordPolicy:
+          RequireLowercase: false
+          RequireSymbols: false
+          RequireNumbers: false
+          MinimumLength: 6
+          RequireUppercase: false
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: photo-app
+      GenerateSecret: false
+      UserPoolId: !Ref UserPool
   optionsImages:
     Type: AWS::Serverless::Function
     Properties:
@@ -132,3 +163,8 @@ Resources:
           Properties:
             Path: /image/{id}
             Method: DELETE
+Outputs:
+  UserPoolId:
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Value: !Ref UserPoolClient

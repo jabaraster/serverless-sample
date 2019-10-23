@@ -7,8 +7,12 @@ async function core(): Promise<IApiCoreResult<IPhotoMeta[]>> {
     const res = await Defs.dynamodb.scan({
         TableName: Defs.TABLE_NAME,
     }).promise();
+    const metas = res.Items as IPhotoMeta[];
+    metas.sort((a0, a1) => {
+        return a1.timestamp - a0.timestamp;
+    });
     return {
-        result: res.Items as IPhotoMeta[],
+        result: metas,
         responseFunction: okJson,
     };
 }
