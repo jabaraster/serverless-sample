@@ -12,9 +12,21 @@ export function getTimestamp(): number {
   return new Date().getTime();
 }
 
-export function getPresignedUrl(bucketName: AWS.S3.BucketName, key: string): string {
-  const params = { Bucket: bucketName, Key: key, Expires: 60 };
-  return Defs.s3.getSignedUrl("putObject", params);
+export async function getPresignedUrl(bucketName: AWS.S3.BucketName, key: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const params = {
+      Bucket: bucketName,
+      Key: key,
+      Expires: 600,
+    };
+    Defs.s3.getSignedUrl("putObject", params, (err, url) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(url);
+      }
+    });
+  });
 }
 
 interface RequestBody {
@@ -36,7 +48,7 @@ async function core(evt: APIGatewayProxyEvent): Promise<IApiCoreResult<IPhotoMet
     TableName: Defs.TABLE_NAME,
     Item: item,
   }).promise();
-  item.signedUrl = getPresignedUrl(Defs.BUCKET_NAME, item.photoId);
+  item.signedUrl = await getPresignedUrl(Defs.BUCKET_NAME, `${item.photoId}.${body.type.split("/")[1]}`);
   return {
     result: item,
     responseFunction: okJson,

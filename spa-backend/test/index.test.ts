@@ -6,24 +6,8 @@ import * as updater from "../src/updateImage";
 
 (async () => {
   try {
-    const postRes = await poster.lambdaHandler(createEvent({
-      type: "image/png",
-      size: 100039,
-    }));
-    console.log(postRes);
-
-    const photoMeta: IPhotoMeta = JSON.parse(postRes.body);
-    const updateRes = await updater.lambdaHandler(createEvent({
-      photoId: photoMeta.photoId,
-      timestamp: 10939348,
-      status: "Uploaded",
-    }));
-    console.log("-----------------------");
-    console.log(updateRes);
-
-    console.log("-----------------------");
-    console.log(await getter.lambdaHandler());
-
+    const url = await poster.getPresignedUrl("jabara-serverless-app-photos", "IMG_5097.JPG");
+    console.log(`curl -v -X PUT -H "content-type: image/jpeg" -H "content-length: 150756" --upload-file "/Users/jabaraster/Pictures/wallpaper/IMG_5097.JPG" "${url}"`);
   } catch (err) {
     console.log(`!!! error -> ${err} !!!`);
   }

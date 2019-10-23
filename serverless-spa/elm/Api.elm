@@ -1,5 +1,6 @@
 module Api exposing (PostPhotoMeta, encodePostPhotoMeta, getImages, postPhotoMeta, uploadPhotoData, urlPrefix)
 
+import Bytes exposing (Bytes)
 import File exposing (File)
 import Http
 import Json.Decode as JD
@@ -43,14 +44,19 @@ postPhotoMeta meta operation =
         }
 
 
-uploadPhotoData : String -> PhotoMeta -> (Result Http.Error () -> msg) -> Cmd msg
-uploadPhotoData dataUrl meta operation =
-    Http.request
-        { url = Maybe.withDefault "" meta.signedUrl
-        , method = "PUT"
-        , headers = []
-        , body = Http.stringBody meta.imageType dataUrl
-        , expect = Http.expectWhatever operation
-        , timeout = Nothing
-        , tracker = Nothing
-        }
+uploadPhotoData : Bytes -> PhotoMeta -> (Result Http.Error () -> msg) -> Cmd msg
+uploadPhotoData data meta operation =
+    case meta.signedUrl of
+        Nothing ->
+            Cmd.none
+
+        Just signedUrl ->
+            Http.request
+                { url = Debug.log "Signed Url" signedUrl
+                , method = "PUT"
+                , headers = []
+                , body = Http.bytesBody meta.imageType data
+                , expect = Http.expectWhatever operation
+                , timeout = Nothing
+                , tracker = Nothing
+                }

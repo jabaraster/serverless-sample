@@ -3,6 +3,7 @@ module Index exposing (Model, Msg(..), Page(..), init, main, parseUrl, subscript
 import Api
 import Browser exposing (Document, UrlRequest(..))
 import Browser.Navigation as Nav exposing (Key)
+import Bytes exposing (Bytes)
 import File exposing (File)
 import File.Select as Select
 import Html exposing (..)
@@ -40,6 +41,7 @@ type alias Model =
     , images : RemoteResource (List PhotoMeta)
     , selectedImageFile : Maybe File
     , selectedImageUrl : String
+    , uploadPhotoMeta : Maybe PhotoMeta
     }
 
 
@@ -50,8 +52,9 @@ type Msg
     | ImageRequested
     | ImageSelected File
     | SelectedImageLoaded String
-    | PostPhotoMeta
+    | StartUploadPhotoProcess
     | PostPhotoMetaCompleted (Result Http.Error PhotoMeta)
+    | SelectedImageBytesLoaded Bytes
     | UploadPhotoCompleted (Result Http.Error ())
 
 
@@ -68,6 +71,7 @@ init _ url key =
               , images = RemoteResource.emptyLoading
               , selectedImageFile = Nothing
               , selectedImageUrl = ""
+              , uploadPhotoMeta = Nothing
               }
             , Api.getImages ImagesLoaded
             )
@@ -120,25 +124,40 @@ update msg model =
         SelectedImageLoaded url ->
             ( { model | selectedImageUrl = url }, Cmd.none )
 
-        PostPhotoMeta ->
+        StartUploadPhotoProcess ->
             case model.selectedImageFile of
                 Nothing ->
                     ( model, Cmd.none )
 
-                -- 有り得ない状況
                 Just file ->
                     ( model
                     , Api.postPhotoMeta { imageType = File.mime file, size = File.size file } PostPhotoMetaCompleted
                     )
 
         PostPhotoMetaCompleted res ->
-            case res of
-                Err _ ->
+            case model.selectedImageFile of
+                Nothing ->
                     ( model, Cmd.none )
 
-                Ok meta ->
+                Just file ->
+                    --                     ( model, Cmd.none )
+                    case res of
+                        Err _ ->
+                            ( model, Cmd.none )
+
+                        Ok meta ->
+                            ( { model | uploadPhotoMeta = Just meta }
+                            , Task.perform SelectedImageBytesLoaded <| File.toBytes file
+                            )
+
+        SelectedImageBytesLoaded data ->
+            case model.uploadPhotoMeta of
+                Nothing ->
+                    ( model, Cmd.none )
+
+                Just meta ->
                     ( model
-                    , Api.uploadPhotoData model.selectedImageUrl meta UploadPhotoCompleted
+                    , Api.uploadPhotoData data meta UploadPhotoCompleted
                     )
 
         UploadPhotoCompleted res ->
@@ -210,7 +229,7 @@ viewForPage model =
                     -- , input [ type_ "file", placeholder "Photo from your computer", accept "image/*", required True ] []
                     , button [ onClick ImageRequested, class "pure-button" ] [ text "Select" ]
                     , viewPreview model.selectedImageFile model.selectedImageUrl
-                    , button [ onClick PostPhotoMeta, class "pure-button pure-button-primary" ] [ text "Upload" ]
+                    , button [ onClick StartUploadPhotoProcess, class "pure-button pure-button-primary" ] [ text "Upload" ]
                     ]
                 ]
     in
