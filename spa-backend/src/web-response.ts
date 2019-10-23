@@ -22,7 +22,8 @@ export function internalServerError(body: any): APIGatewayProxyResult {
 }
 
 function core(statusCode: number, body: any, headers: {[key: string]: string}): APIGatewayProxyResult {
-  headers["Access-Control-Allow-Origin"] = "*";
+  headers["Access-Control-Allow-Origin"] = "https://jabara-serverless-app-web.s3-ap-northeast-1.amazonaws.com";
+  headers["Access-Control-Allow-Credentials"] = "true";
   headers["Access-Control-Allow-Methods"] = "*";
   headers["Access-Control-Allow-Headers"] = "Content-Type";
   return {

@@ -1,8 +1,8 @@
 import { APIGatewayEvent } from "aws-lambda";
-import { IPhotoMeta } from "../src/types";
-import * as poster from "../src/postImage";
-import * as updater from "../src/updateImage";
 import * as getter from "../src/getImages";
+import * as poster from "../src/postImage";
+import { IPhotoMeta } from "../src/types";
+import * as updater from "../src/updateImage";
 
 (async () => {
   try {
