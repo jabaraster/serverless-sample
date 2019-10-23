@@ -14,7 +14,8 @@ import List.Extra as LE
 import List.Split as LS
 import RemoteResource exposing (RemoteResource)
 import Task
-import Types exposing (PhotoMeta)
+import Time exposing (Posix)
+import Types exposing (PhotoMeta, UploadStatus(..))
 import Url exposing (Url)
 import Url.Parser exposing (..)
 
@@ -55,7 +56,9 @@ type Msg
     | StartUploadPhotoProcess
     | PostPhotoMetaCompleted (Result Http.Error PhotoMeta)
     | SelectedImageBytesLoaded Bytes
+    | CurrentTimeGet Posix
     | UploadPhotoCompleted (Result Http.Error ())
+    | UploadStatusUpdated (Result Http.Error ())
 
 
 init : () -> Url -> Key -> ( Model, Cmd Msg )
@@ -161,7 +164,41 @@ update msg model =
                     )
 
         UploadPhotoCompleted res ->
-            ( model, Debug.todo "load images" Cmd.none )
+            ( model, Task.perform CurrentTimeGet Time.now )
+
+        CurrentTimeGet now ->
+            case model.uploadPhotoMeta of
+                Nothing ->
+                    ( model, Cmd.none )
+
+                Just meta ->
+                    ( model
+                    , Api.updatePhotoMeta meta.photoId Uploaded now UploadStatusUpdated
+                    )
+
+        UploadStatusUpdated _ ->
+            case model.uploadPhotoMeta of
+                Nothing ->
+                    ( { model
+                        | selectedImageFile = Nothing
+                        , selectedImageUrl = ""
+                        , uploadPhotoMeta = Nothing
+                      }
+                    , Cmd.none
+                    )
+
+                Just meta ->
+                    let
+                        wm =
+                            { model
+                                | selectedImageFile = Nothing
+                                , selectedImageUrl = ""
+                                , uploadPhotoMeta = Nothing
+                            }
+                    in
+                    ( { wm | images = RemoteResource.map (flip (++) [ meta ]) model.images }
+                    , Cmd.none
+                    )
 
 
 subscriptions : Model -> Sub Msg
@@ -225,8 +262,6 @@ viewForPage model =
             div [ class "pure-u-1 form-box" ]
                 [ div [ class "l-box" ]
                     [ h2 [] [ text "Upload a Photo" ]
-
-                    -- , input [ type_ "file", placeholder "Photo from your computer", accept "image/*", required True ] []
                     , button [ onClick ImageRequested, class "pure-button" ] [ text "Select" ]
                     , viewPreview model.selectedImageFile model.selectedImageUrl
                     , button [ onClick StartUploadPhotoProcess, class "pure-button pure-button-primary" ] [ text "Upload" ]
@@ -235,44 +270,22 @@ viewForPage model =
     in
     case model.page of
         HomePage ->
-            case model.images.data of
-                Nothing ->
-                    { title = title
-                    , body =
-                        [ div [ class "pure-g" ]
-                            [ base
-                            , text "Now loading..."
-                            , form
-                            ]
-                        ]
-                    }
-
-                Just (Ok images) ->
-                    { title = title
-                    , body =
-                        [ div [ class "pure-g" ] <|
-                            base
-                                :: List.map
-                                    (\image ->
-                                        div [ class "photo pure-u-1-3 pure-u-md-1-3 pure-u-lg-1-3 pure-u-xl-1-3" ]
-                                            [ img [ src <| imageUrl image ] []
-                                            ]
-                                    )
-                                    images
-                                ++ [ form ]
-                        ]
-                    }
-
-                _ ->
-                    { title = "Home"
-                    , body =
-                        [ div [ class "pure-g" ]
-                            [ base
-                            , p [] [ text "Fail loading..." ]
-                            , form
-                            ]
-                        ]
-                    }
+            { title = title
+            , body =
+                [ div [ class "pure-g" ] <|
+                    base
+                        :: List.map
+                            (\image ->
+                                div [ class "photo pure-u-1-3 pure-u-md-1-3 pure-u-lg-1-3 pure-u-xl-1-3" ]
+                                    [ a [ href <| imageUrl image, target "_blank" ]
+                                        [ img [ src <| imageUrl image ] []
+                                        ]
+                                    ]
+                            )
+                            (RemoteResource.value [] model.images)
+                        ++ [ form ]
+                ]
+            }
 
 
 imageUrlBase =
@@ -281,18 +294,14 @@ imageUrlBase =
 
 imageUrl : PhotoMeta -> String
 imageUrl image =
-    let
-        tokens =
-            String.split image.imageType
-    in
-    case LE.getAt 1 <| String.split "/" image.imageType of
-        Nothing ->
-            imageUrlBase ++ image.photoId
-
-        Just suf ->
-            imageUrlBase ++ image.photoId ++ "." ++ suf
+    imageUrlBase ++ image.photoId
 
 
 formatComma : Int -> String
 formatComma =
     String.join "," << List.reverse << List.map String.fromList << LS.chunksOfRight 3 << String.toList << String.fromInt
+
+
+flip : (a -> b -> c) -> b -> a -> c
+flip f b a =
+    f a b

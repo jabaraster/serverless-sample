@@ -1,5 +1,6 @@
 import { APIGatewayProxyEvent } from "aws-lambda";
 import * as AWS from "aws-sdk";
+import * as moment from "moment-timezone";
 import * as uuid from "uuid";
 import * as Defs from "./defs";
 import { handler2, IApiCoreResult } from "./handler-helper";
@@ -9,7 +10,7 @@ import { okJson } from "./web-response";
 export const generateId = uuid.v4;
 
 export function getTimestamp(): number {
-  return new Date().getTime();
+  return moment().utc().millisecond();
 }
 
 export async function getPresignedUrl(bucketName: AWS.S3.BucketName, key: string): Promise<string> {
@@ -48,7 +49,7 @@ async function core(evt: APIGatewayProxyEvent): Promise<IApiCoreResult<IPhotoMet
     TableName: Defs.TABLE_NAME,
     Item: item,
   }).promise();
-  item.signedUrl = await getPresignedUrl(Defs.BUCKET_NAME, `${item.photoId}.${body.type.split("/")[1]}`);
+  item.signedUrl = await getPresignedUrl(Defs.BUCKET_NAME, `${item.photoId}`);
   return {
     result: item,
     responseFunction: okJson,

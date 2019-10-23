@@ -1,4 +1,4 @@
-module RemoteResource exposing (RemoteResource, empty, emptyLoading, finishLoading, hasData, loadIfNecessary, new, resourceValue, startLoading, updateData, updateSuccessData, withDummyData)
+module RemoteResource exposing (RemoteResource, empty, emptyLoading, finishLoading, hasData, loadIfNecessary, map, new, startLoading, updateData, updateSuccessData, value, withDummyData)
 
 import Http
 
@@ -30,8 +30,8 @@ new res =
     { empty | data = Just res }
 
 
-resourceValue : RemoteResource a -> b -> (a -> b) -> b
-resourceValue rr defaultValue operation =
+value : a -> RemoteResource a -> a
+value defaultValue rr =
     case rr.data of
         Nothing ->
             defaultValue
@@ -40,7 +40,29 @@ resourceValue rr defaultValue operation =
             defaultValue
 
         Just (Ok val) ->
-            operation val
+            val
+
+
+map : (a -> b) -> RemoteResource a -> RemoteResource b
+map operation rr =
+    case rr.data of
+        Nothing ->
+            { data = Nothing
+            , dummyData = Maybe.map operation rr.dummyData
+            , loading = rr.loading
+            }
+
+        Just (Err e) ->
+            { data = Just <| Err e
+            , dummyData = Maybe.map operation rr.dummyData
+            , loading = rr.loading
+            }
+
+        Just (Ok val) ->
+            { data = Just <| Ok <| operation val
+            , dummyData = Maybe.map operation rr.dummyData
+            , loading = rr.loading
+            }
 
 
 updateData : RemoteResource a -> Result Http.Error a -> RemoteResource a

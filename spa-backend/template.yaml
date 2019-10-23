@@ -11,7 +11,6 @@ Resources:
       Description : ""
       MemorySize: 128
       Timeout: 3
-      Role: arn:aws:iam::195957709288:role/lambda-dynamodb-access
       Events:
         Api:
           Type: Api
@@ -78,22 +77,21 @@ Resources:
           Properties:
             Path: /images
             Method: GET
-#  optionsImageById:
-#    Type: AWS::Serverless::Function
-#    Properties:
-#      CodeUri: dist/src/
-#      Handler: options.lambdaHandler
-#      Runtime: nodejs10.x
-#      Description : ""
-#      MemorySize: 32
-#      Timeout: 3
-#      Role: arn:aws:iam::195957709288:role/lambda-dynamodb-access
-#      Events:
-#        Api:
-#          Type: Api
-#          Properties:
-#            Path: /image/{id}
-#            Method: OPTIONS
+  optionsImageById:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: dist/src/
+      Handler: options.lambdaHandler
+      Runtime: nodejs10.x
+      Description : ""
+      MemorySize: 128
+      Timeout: 3
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /image/{id}
+            Method: OPTIONS
   getImageById:
     Type: AWS::Serverless::Function
     Properties:

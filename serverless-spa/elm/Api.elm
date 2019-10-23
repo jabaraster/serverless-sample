@@ -1,10 +1,11 @@
-module Api exposing (PostPhotoMeta, encodePostPhotoMeta, getImages, postPhotoMeta, uploadPhotoData, urlPrefix)
+module Api exposing (PostPhotoMetaRequest, encodePostPhotoMetaRequest, encodeUpdatePhotoMetaRequest, getImages, postPhotoMeta, updatePhotoMeta, uploadPhotoData, urlPrefix)
 
 import Bytes exposing (Bytes)
 import File exposing (File)
 import Http
 import Json.Decode as JD
 import Json.Encode as JE
+import Time exposing (Posix)
 import Types exposing (..)
 
 
@@ -20,22 +21,22 @@ getImages operation =
         }
 
 
-type alias PostPhotoMeta =
+type alias PostPhotoMetaRequest =
     { imageType : String
     , size : Int
     }
 
 
-encodePostPhotoMeta : PostPhotoMeta -> JE.Value
-encodePostPhotoMeta meta =
+encodePostPhotoMetaRequest : PostPhotoMetaRequest -> JE.Value
+encodePostPhotoMetaRequest meta =
     JE.object [ ( "type", JE.string meta.imageType ), ( "size", JE.int meta.size ) ]
 
 
-postPhotoMeta : PostPhotoMeta -> (Result Http.Error PhotoMeta -> msg) -> Cmd msg
+postPhotoMeta : PostPhotoMetaRequest -> (Result Http.Error PhotoMeta -> msg) -> Cmd msg
 postPhotoMeta meta operation =
-    Http.riskyRequest
+    Http.request
         { url = urlPrefix ++ "images"
-        , body = Http.jsonBody <| encodePostPhotoMeta meta
+        , body = Http.jsonBody <| encodePostPhotoMetaRequest meta
         , expect = Http.expectJson operation photoMetaDecoder
         , method = "POST"
         , headers = []
@@ -52,7 +53,7 @@ uploadPhotoData data meta operation =
 
         Just signedUrl ->
             Http.request
-                { url = Debug.log "Signed Url" signedUrl
+                { url = signedUrl
                 , method = "PUT"
                 , headers = []
                 , body = Http.bytesBody meta.imageType data
@@ -60,3 +61,27 @@ uploadPhotoData data meta operation =
                 , timeout = Nothing
                 , tracker = Nothing
                 }
+
+
+encodeUpdatePhotoMetaRequest : PhotoId -> UploadStatus -> Posix -> JE.Value
+encodeUpdatePhotoMetaRequest photoId status time =
+    JE.object
+        [ ( "photoId", JE.string photoId )
+        , ( "status"
+          , encodeUploadStatus status
+          )
+        , ( "timestamp", JE.int <| Time.posixToMillis time )
+        ]
+
+
+updatePhotoMeta : PhotoId -> UploadStatus -> Posix -> (Result Http.Error () -> msg) -> Cmd msg
+updatePhotoMeta photoId status time operation =
+    Http.request
+        { url = urlPrefix ++ "images"
+        , body = Http.jsonBody <| encodeUpdatePhotoMetaRequest photoId status time
+        , expect = Http.expectWhatever operation
+        , method = "PUT"
+        , headers = []
+        , timeout = Nothing
+        , tracker = Nothing
+        }

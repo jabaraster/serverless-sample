@@ -28,7 +28,7 @@ async function core(evt: APIGatewayEvent): Promise<IApiCoreResult<string | IPhot
         Value: body.status,
       },
     },
-  });
+  }).promise();
   const res = await Defs.dynamodb.get({
     TableName: Defs.TABLE_NAME,
     Key: {
