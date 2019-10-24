@@ -1,0 +1,30 @@
+{
+  "name": "serverless-sample",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jabaraster/serverless-sample.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jabaraster/serverless-sample/issues"
+  },
+  "homepage": "https://github.com/jabaraster/serverless-sample#readme",
+  "dependencies": {
+    "amazon-cognito-identity-js": "^3.1.3",
+    "aws-sdk": "^2.555.0"
+  },
+  "devDependencies": {
+    "@types/node": "^12.11.6",
+    "espower-typescript": "^9.0.2",
+    "ts-node": "^8.4.1",
+    "tslint": "^5.20.0",
+    "typescript": "^3.6.4"
+  }
+}

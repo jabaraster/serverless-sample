@@ -4,6 +4,7 @@ import Api
 import Browser exposing (Document, UrlRequest(..))
 import Browser.Navigation as Nav exposing (Key)
 import Bytes exposing (Bytes)
+import Cognito
 import File exposing (File)
 import File.Select as Select
 import Html exposing (..)
@@ -197,7 +198,7 @@ update msg model =
                             }
                     in
                     ( { wm | images = RemoteResource.map (flip (++) [ meta ]) model.images }
-                    , Cmd.none
+                    , Cognito.signup { username = "jabara", email = "ah@jabara.info", password = "pass" }
                     )
 
 
