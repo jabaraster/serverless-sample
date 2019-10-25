@@ -5,3 +5,8 @@ serverless-spa/.work/
 serverless-spa/elm-stuff/
 serverless-spa/dist/
 spa-backend/debug.log
+client/.work/
+client/dist/js/
+client/dist/css/
+client/elm-stuff/
+client/node_modules/

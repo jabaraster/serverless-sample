@@ -18,7 +18,7 @@ import Task
 import Time exposing (Posix)
 import Types exposing (PhotoMeta, UploadStatus(..))
 import Url exposing (Url)
-import Url.Parser exposing (..)
+import Url.Parser as UP exposing ((</>))
 
 
 main : Platform.Program () Model Msg
@@ -35,6 +35,10 @@ main =
 
 type Page
     = HomePage
+    | LoginPage
+    | UploadPage
+    | SettingsPage
+    | NotFoundPage
 
 
 type alias Model =
@@ -67,29 +71,59 @@ init _ url key =
     let
         page =
             parseUrl url
+
+        model =
+            { key = key
+            , page = page
+            , images = RemoteResource.emptyLoading
+            , selectedImageFile = Nothing
+            , selectedImageUrl = ""
+            , uploadPhotoMeta = Nothing
+            }
     in
     case page of
         HomePage ->
-            ( { key = key
-              , page = page
-              , images = RemoteResource.emptyLoading
-              , selectedImageFile = Nothing
-              , selectedImageUrl = ""
-              , uploadPhotoMeta = Nothing
-              }
+            ( model
             , Api.getImages ImagesLoaded
             )
+
+        _ ->
+            ( model, Cmd.none )
 
 
 parseUrl : Url -> Page
 parseUrl url =
-    Maybe.withDefault HomePage <|
-        Url.Parser.parse
-            (Url.Parser.oneOf
-                [ Url.Parser.map HomePage Url.Parser.top
-                ]
-            )
-            url
+    Debug.log "" <|
+        Maybe.withDefault NotFoundPage <|
+            UP.parse
+                (UP.oneOf
+                    [ UP.s "index.html"
+                        </> UP.fragment
+                                (\mv ->
+                                    case mv of
+                                        Just "login" ->
+                                            LoginPage
+
+                                        Just "upload" ->
+                                            UploadPage
+
+                                        Just "settings" ->
+                                            SettingsPage
+
+                                        Just "" ->
+                                            HomePage
+
+                                        Just _ ->
+                                            NotFoundPage
+
+                                        Nothing ->
+                                            HomePage
+                                )
+                    , UP.map HomePage <| UP.s "index.html"
+                    , UP.map HomePage UP.top
+                    ]
+                )
+                url
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -107,10 +141,20 @@ update msg model =
             let
                 page =
                     parseUrl url
+
+                newModel =
+                    { model | page = page }
             in
             case page of
                 HomePage ->
-                    ( { model | page = page }, Cmd.none )
+                    let
+                        ( newRr, cmd ) =
+                            RemoteResource.loadIfNecessary model.images <| Api.getImages ImagesLoaded
+                    in
+                    ( { newModel | images = newRr }, cmd )
+
+                _ ->
+                    ( newModel, Cmd.none )
 
         ImagesLoaded res ->
             ( { model | images = RemoteResource.updateData model.images res }, Cmd.none )
@@ -144,7 +188,6 @@ update msg model =
                     ( model, Cmd.none )
 
                 Just file ->
-                    --                     ( model, Cmd.none )
                     case res of
                         Err _ ->
                             ( model, Cmd.none )
@@ -198,7 +241,10 @@ update msg model =
                             }
                     in
                     ( { wm | images = RemoteResource.map (flip (++) [ meta ]) model.images }
-                    , Cognito.signup { username = "jabara", email = "ah@jabara.info", password = "pass" }
+                    , Cmd.batch
+                        [ Cognito.signup { username = "jabara", email = "ah@jabara.info", password = "pass" }
+                        , Nav.pushUrl model.key "/index.html"
+                        ]
                     )
 
 
@@ -212,23 +258,82 @@ view model =
     let
         doc =
             viewForPage model
+
+        header =
+            div [ class "header" ]
+                [ div [ class "pure-menu pure-menu-horizontal" ]
+                    [ a [ class "pure-menu-heading", href "" ] [ text "Photo Gallery" ]
+                    , ul [ class "pure-menu-list" ]
+                        [ li [ class "pure-menu-item pure-menu-selected" ] [ a [ class "pure-menu-link", href "#" ] [ text "Home" ] ]
+                        , li [ class "pure-menu-item" ] [ a [ class "pure-menu-link", href "#upload" ] [ text "Upload" ] ]
+                        , li [ class "pure-menu-item" ] [ a [ class "pure-menu-link", href "#settings" ] [ text "Settings" ] ]
+                        , li [ class "pure-menu-item" ] [ a [ class "pure-menu-link", href "#login" ] [ text "Login" ] ]
+                        ]
+                    ]
+                ]
+
+        textHead =
+            div [ class "text-box pure-u-1 pure-u-md-1 pure-u-lg-1 pure-u-xl-1" ]
+                [ div [ class "l-box" ]
+                    [ h1 [ class "text-box-head" ] [ text "Photo Garally" ]
+                    , p [ class "text-box-subhead" ] [ text "A collection of various photos from around the world" ]
+                    ]
+                ]
+
+        footer =
+            div [ class "footer" ] [ text "This sample app made by jabaraster." ]
     in
     { title = doc.title
     , body =
-        div [ class "header" ]
-            [ div [ class "pure-menu pure-menu-horizontal" ]
-                [ a [ class "pure-menu-heading", href "" ] [ text "Photo Gallery" ]
-                , ul [ class "pure-menu-list" ]
-                    [ li [ class "pure-menu-item pure-menu-selected" ] [ a [ class "pure-menu-link", href "#" ] [ text "Home" ] ]
-                    , li [ class "pure-menu-item" ] [ a [ class "pure-menu-link", href "#upload-image" ] [ text "Upload" ] ]
-                    , li [ class "pure-menu-item" ] [ a [ class "pure-menu-link", href "#" ] [ text "Settings" ] ]
-                    , li [ class "pure-menu-item" ] [ a [ class "pure-menu-link", href "#" ] [ text "Login" ] ]
+        [ header, textHead, div [ class "pure-g" ] doc.body, footer ]
+    }
+
+
+viewForPage : Model -> Document Msg
+viewForPage model =
+    case model.page of
+        HomePage ->
+            { title = "Home"
+            , body =
+                List.map
+                    (\image ->
+                        div [ class "photo pure-u-1-3 pure-u-md-1-3 pure-u-lg-1-3 pure-u-xl-1-3" ]
+                            [ a [ href <| imageUrl image, target "_blank" ]
+                                [ img [ src <| imageUrl image ] []
+                                ]
+                            ]
+                    )
+                    (RemoteResource.value [] model.images)
+            }
+
+        UploadPage ->
+            { title = "Upload"
+            , body =
+                [ div [ class "pure-u-1 form-box" ]
+                    [ div [ class "l-box" ]
+                        [ h2 [] [ text "Upload a Photo" ]
+                        , button [ onClick ImageRequested, class "pure-button" ] [ text "Select" ]
+                        , viewPreview model.selectedImageFile model.selectedImageUrl
+                        , button [ onClick StartUploadPhotoProcess, class "pure-button pure-button-primary" ] [ text "Upload" ]
+                        ]
                     ]
                 ]
-            ]
-            :: doc.body
-            ++ [ div [ class "footer" ] [ text "This sample app made by jabaraster." ] ]
-    }
+            }
+
+        SettingsPage ->
+            { title = "Settings"
+            , body = [ text "Settings" ]
+            }
+
+        LoginPage ->
+            { title = "Login"
+            , body = [ text "Login" ]
+            }
+
+        NotFoundPage ->
+            { title = "Not found"
+            , body = [ text "Not found" ]
+            }
 
 
 viewPreview : Maybe File -> String -> Html Msg
@@ -243,50 +348,6 @@ viewPreview mFile url =
                 , div [] [ text <| "Size: " ++ (formatComma <| File.size file) ]
                 , img [ src url, class "preview" ] []
                 ]
-
-
-viewForPage : Model -> Document Msg
-viewForPage model =
-    let
-        title =
-            "Home"
-
-        base =
-            div [ class "text-box pure-u-1 pure-u-md-1 pure-u-lg-1 pure-u-xl-1" ]
-                [ div [ class "l-box" ]
-                    [ h1 [ class "text-box-head" ] [ text "Photo Garally" ]
-                    , p [ class "text-box-subhead" ] [ text "A collection of various photos from around the world" ]
-                    ]
-                ]
-
-        form =
-            div [ class "pure-u-1 form-box" ]
-                [ div [ class "l-box" ]
-                    [ h2 [] [ text "Upload a Photo" ]
-                    , button [ onClick ImageRequested, class "pure-button" ] [ text "Select" ]
-                    , viewPreview model.selectedImageFile model.selectedImageUrl
-                    , button [ onClick StartUploadPhotoProcess, class "pure-button pure-button-primary" ] [ text "Upload" ]
-                    ]
-                ]
-    in
-    case model.page of
-        HomePage ->
-            { title = title
-            , body =
-                [ div [ class "pure-g" ] <|
-                    base
-                        :: List.map
-                            (\image ->
-                                div [ class "photo pure-u-1-3 pure-u-md-1-3 pure-u-lg-1-3 pure-u-xl-1-3" ]
-                                    [ a [ href <| imageUrl image, target "_blank" ]
-                                        [ img [ src <| imageUrl image ] []
-                                        ]
-                                    ]
-                            )
-                            (RemoteResource.value [] model.images)
-                        ++ [ form ]
-                ]
-            }
 
 
 imageUrlBase =
