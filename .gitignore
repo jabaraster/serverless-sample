@@ -10,3 +10,6 @@ client/dist/js/
 client/dist/css/
 client/elm-stuff/
 client/node_modules/
+server/debug.log
+server/dist/
+server/node_modules

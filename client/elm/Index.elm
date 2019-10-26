@@ -1,4 +1,4 @@
-module Index exposing (Model, Msg(..), Page(..), init, main, parseUrl, subscriptions, update, view)
+module Index exposing (Model, Msg(..), PageState(..), flip, formatComma, imageUrl, imageUrlBase, init, main, routing, subscriptions, update, view, viewForPage, viewMenuLink, viewPreview)
 
 import Api
 import Browser exposing (Document, UrlRequest(..))
@@ -11,6 +11,7 @@ import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import Http
+import Json.Encode as JE
 import List.Extra as LE
 import List.Split as LS
 import RemoteResource exposing (RemoteResource)
@@ -33,8 +34,9 @@ main =
         }
 
 
-type Page
+type PageState
     = HomePage
+    | SignupPage
     | LoginPage
     | UploadPage
     | SettingsPage
@@ -43,47 +45,76 @@ type Page
 
 type alias Model =
     { key : Key
-    , page : Page
+    , pageState : PageState
+
+    -- Images
     , images : RemoteResource (List PhotoMeta)
+
+    -- Photo select
     , selectedImageFile : Maybe File
     , selectedImageUrl : String
+
+    -- Upload photo process
     , uploadPhotoMeta : Maybe PhotoMeta
+    , uploading : Bool
+
+    -- Singup or login
+    , username : String
+    , email : String
+    , password : String
+    , signupResult : String
     }
 
 
 type Msg
     = LinkClicked UrlRequest
     | UrlChanged Url
+      -- Images load
+    | LoadImages
     | ImagesLoaded (Result Http.Error (List PhotoMeta))
     | ImageRequested
+      -- Photo select
     | ImageSelected File
     | SelectedImageLoaded String
+      -- Upload photo process
     | StartUploadPhotoProcess
     | PostPhotoMetaCompleted (Result Http.Error PhotoMeta)
     | SelectedImageBytesLoaded Bytes
     | CurrentTimeGet Posix
     | UploadPhotoCompleted (Result Http.Error ())
     | UploadStatusUpdated (Result Http.Error ())
+      -- Upload photo process
+    | UsernameChange String
+    | EmailChange String
+    | PasswordChange String
+      -- Signup
+    | Signup
+    | SignupCallback JE.Value
 
 
 init : () -> Url -> Key -> ( Model, Cmd Msg )
 init _ url key =
     let
         page =
-            parseUrl url
+            routing url
 
         model =
             { key = key
-            , page = page
-            , images = RemoteResource.emptyLoading
+            , pageState = page
+            , images = RemoteResource.empty
             , selectedImageFile = Nothing
             , selectedImageUrl = ""
             , uploadPhotoMeta = Nothing
+            , uploading = False
+            , username = ""
+            , email = ""
+            , password = ""
+            , signupResult = ""
             }
     in
     case page of
         HomePage ->
-            ( model
+            ( { model | images = RemoteResource.startLoading model.images }
             , Api.getImages ImagesLoaded
             )
 
@@ -91,39 +122,41 @@ init _ url key =
             ( model, Cmd.none )
 
 
-parseUrl : Url -> Page
-parseUrl url =
-    Debug.log "" <|
-        Maybe.withDefault NotFoundPage <|
-            UP.parse
-                (UP.oneOf
-                    [ UP.s "index.html"
-                        </> UP.fragment
-                                (\mv ->
-                                    case mv of
-                                        Just "login" ->
-                                            LoginPage
+routing : Url -> PageState
+routing url =
+    Maybe.withDefault NotFoundPage <|
+        UP.parse
+            (UP.oneOf
+                [ UP.s "index.html"
+                    </> UP.fragment
+                            (\mv ->
+                                case mv of
+                                    Just "login" ->
+                                        LoginPage
 
-                                        Just "upload" ->
-                                            UploadPage
+                                    Just "signup" ->
+                                        SignupPage
 
-                                        Just "settings" ->
-                                            SettingsPage
+                                    Just "upload" ->
+                                        UploadPage
 
-                                        Just "" ->
-                                            HomePage
+                                    Just "settings" ->
+                                        SettingsPage
 
-                                        Just _ ->
-                                            NotFoundPage
+                                    Just "" ->
+                                        HomePage
 
-                                        Nothing ->
-                                            HomePage
-                                )
-                    , UP.map HomePage <| UP.s "index.html"
-                    , UP.map HomePage UP.top
-                    ]
-                )
-                url
+                                    Just _ ->
+                                        NotFoundPage
+
+                                    Nothing ->
+                                        HomePage
+                            )
+                , UP.map HomePage <| UP.s "index.html"
+                , UP.map HomePage UP.top
+                ]
+            )
+            url
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -140,10 +173,10 @@ update msg model =
         UrlChanged url ->
             let
                 page =
-                    parseUrl url
+                    routing url
 
                 newModel =
-                    { model | page = page }
+                    { model | pageState = page }
             in
             case page of
                 HomePage ->
@@ -155,6 +188,11 @@ update msg model =
 
                 _ ->
                     ( newModel, Cmd.none )
+
+        LoadImages ->
+            ( { model | images = RemoteResource.startLoading model.images }
+            , Api.getImages ImagesLoaded
+            )
 
         ImagesLoaded res ->
             ( { model | images = RemoteResource.updateData model.images res }, Cmd.none )
@@ -178,7 +216,9 @@ update msg model =
                     ( model, Cmd.none )
 
                 Just file ->
-                    ( model
+                    ( { model
+                        | uploading = True
+                      }
                     , Api.postPhotoMeta { imageType = File.mime file, size = File.size file } PostPhotoMetaCompleted
                     )
 
@@ -221,36 +261,51 @@ update msg model =
                     )
 
         UploadStatusUpdated _ ->
-            case model.uploadPhotoMeta of
-                Nothing ->
-                    ( { model
+            let
+                newModel =
+                    { model
                         | selectedImageFile = Nothing
                         , selectedImageUrl = ""
                         , uploadPhotoMeta = Nothing
-                      }
-                    , Cmd.none
-                    )
+                        , uploading = False
+                    }
+            in
+            case model.uploadPhotoMeta of
+                Nothing ->
+                    ( newModel, Cmd.none )
 
                 Just meta ->
-                    let
-                        wm =
-                            { model
-                                | selectedImageFile = Nothing
-                                , selectedImageUrl = ""
-                                , uploadPhotoMeta = Nothing
-                            }
-                    in
-                    ( { wm | images = RemoteResource.map (flip (++) [ meta ]) model.images }
-                    , Cmd.batch
-                        [ Cognito.signup { username = "jabara", email = "ah@jabara.info", password = "pass" }
-                        , Nav.pushUrl model.key "/index.html"
-                        ]
+                    ( { newModel
+                        | images = RemoteResource.map (flip (++) [ meta ]) model.images
+                      }
+                    , Nav.pushUrl model.key "/index.html"
                     )
+
+        UsernameChange v ->
+            ( { model | username = v }, Cmd.none )
+
+        EmailChange v ->
+            ( { model | email = v }, Cmd.none )
+
+        PasswordChange v ->
+            ( { model | password = v }, Cmd.none )
+
+        Signup ->
+            ( { model | uploading = True }
+            , Cognito.signup
+                { username = model.username
+                , email = model.email
+                , password = model.password
+                }
+            )
+
+        SignupCallback v ->
+            Debug.log "" ( { model | signupResult = JE.encode 0 v }, Cmd.none )
 
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
-    Sub.none
+    Cognito.signupCallback SignupCallback
 
 
 view : Model -> Document Msg
@@ -259,15 +314,23 @@ view model =
         doc =
             viewForPage model
 
+        loading =
+            if isLoading model then
+                [ span [ class "fas fa-spinner loading loading-icon" ] [] ]
+
+            else
+                []
+
         header =
             div [ class "header" ]
                 [ div [ class "pure-menu pure-menu-horizontal" ]
                     [ a [ class "pure-menu-heading", href "" ] [ text "Photo Gallery" ]
                     , ul [ class "pure-menu-list" ]
-                        [ li [ class "pure-menu-item pure-menu-selected" ] [ a [ class "pure-menu-link", href "#" ] [ text "Home" ] ]
-                        , li [ class "pure-menu-item" ] [ a [ class "pure-menu-link", href "#upload" ] [ text "Upload" ] ]
-                        , li [ class "pure-menu-item" ] [ a [ class "pure-menu-link", href "#settings" ] [ text "Settings" ] ]
-                        , li [ class "pure-menu-item" ] [ a [ class "pure-menu-link", href "#login" ] [ text "Login" ] ]
+                        [ viewMenuLink { currentPageState = model.pageState, menuPageState = HomePage, fragment = "", labelText = "Home" }
+                        , viewMenuLink { currentPageState = model.pageState, menuPageState = UploadPage, fragment = "upload", labelText = "Upload" }
+                        , viewMenuLink { currentPageState = model.pageState, menuPageState = SettingsPage, fragment = "settings", labelText = "Settings" }
+                        , viewMenuLink { currentPageState = model.pageState, menuPageState = SignupPage, fragment = "signup", labelText = "Signup" }
+                        , viewMenuLink { currentPageState = model.pageState, menuPageState = LoginPage, fragment = "login", labelText = "Login" }
                         ]
                     ]
                 ]
@@ -285,25 +348,40 @@ view model =
     in
     { title = doc.title
     , body =
-        [ header, textHead, div [ class "pure-g" ] doc.body, footer ]
+        loading ++ [ header, textHead, div [ class "pure-g" ] doc.body, footer ]
     }
+
+
+viewMenuLink :
+    { currentPageState : PageState
+    , menuPageState : PageState
+    , fragment : String
+    , labelText : String
+    }
+    -> Html Msg
+viewMenuLink arg =
+    li [ class "pure-menu-item", classList [ ( "pure-menu-selected", arg.currentPageState == arg.menuPageState ) ] ]
+        [ a [ class "pure-menu-link", href <| "#" ++ arg.fragment ] [ text arg.labelText ] ]
 
 
 viewForPage : Model -> Document Msg
 viewForPage model =
-    case model.page of
+    case model.pageState of
         HomePage ->
             { title = "Home"
             , body =
-                List.map
-                    (\image ->
-                        div [ class "photo pure-u-1-3 pure-u-md-1-3 pure-u-lg-1-3 pure-u-xl-1-3" ]
-                            [ a [ href <| imageUrl image, target "_blank" ]
-                                [ img [ src <| imageUrl image ] []
+                [ div [] <|
+                    List.map
+                        (\image ->
+                            div [ class "photo pure-u-1-3 pure-u-md-1-3 pure-u-lg-1-3 pure-u-xl-1-3" ]
+                                [ a [ href <| imageUrl image, target "_blank" ]
+                                    [ img [ src <| imageUrl image ] []
+                                    ]
                                 ]
-                            ]
-                    )
-                    (RemoteResource.value [] model.images)
+                        )
+                        (RemoteResource.value [] model.images)
+                , button [ class "pure-button", onClick LoadImages ] [ span [ class "fas fa-sync" ] [], text "Reload" ]
+                ]
             }
 
         UploadPage ->
@@ -327,7 +405,32 @@ viewForPage model =
 
         LoginPage ->
             { title = "Login"
-            , body = [ text "Login" ]
+            , body =
+                [ div [ class "pure-u-1 form-box l-box" ]
+                    [ h2 [] [ text "Login" ]
+                    , div [ class "pure-form pure-form-stacked" ]
+                        [ viewUsername
+                        , viewEmail
+                        , viewPassword
+                        , button [ class "pure-button pure-button-primary" ] [ text "Singup" ]
+                        ]
+                    ]
+                ]
+            }
+
+        SignupPage ->
+            { title = "Signup"
+            , body =
+                [ div [ class "pure-u-1 form-box l-box" ]
+                    [ h2 [] [ text "Signup" ]
+                    , Html.form [ class "pure-form pure-form-stacked" ]
+                        [ viewUsername
+                        , viewEmail
+                        , viewPassword
+                        , button [ onClick Signup, class "pure-button pure-button-primary" ] [ text "Singup" ]
+                        ]
+                    ]
+                ]
             }
 
         NotFoundPage ->
@@ -367,3 +470,21 @@ formatComma =
 flip : (a -> b -> c) -> b -> a -> c
 flip f b a =
     f a b
+
+
+isLoading : Model -> Bool
+isLoading model =
+    model.images.loading
+        || model.uploading
+
+
+viewUsername =
+    label [] [ input [ onInput UsernameChange, type_ "text", placeholder "Username" ] [] ]
+
+
+viewEmail =
+    label [] [ input [ onInput EmailChange, type_ "email", placeholder "Email" ] [] ]
+
+
+viewPassword =
+    label [] [ input [ onInput PasswordChange, type_ "password", placeholder "Password" ] [] ]

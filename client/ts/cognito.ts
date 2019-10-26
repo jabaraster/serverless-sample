@@ -14,66 +14,53 @@ const userPool = new CognitoUserPool({
     ClientId: USER_POOL_CLIENT_ID,
 });
 
-interface SignupArg {
+export interface ISubscriber {
+    subscribe: (_: any) => void;
+}
+export interface ISender {
+    send: (_: any) => void;
+}
+export interface IPorts {
+    signup?: ISubscriber;
+    signupCallback: ISender;
+
+    confirm?: ISubscriber;
+    confirmCallback: ISender;
+}
+
+export interface IApp {
+    ports: IPorts;
+}
+
+export interface SignupArg {
     username: string;
     email: string;
     password: string;
 }
-function signup(arg: SignupArg): Promise<ISignUpResult> {
-    return new Promise((resolve, reject) => {
+export function signup(ports: IPorts): (_: SignupArg) => void {
+    return (arg: SignupArg) => {
         const attributes = [new CognitoUserAttribute({
             Name: "email",
             Value: arg.email,
         })];
-        userPool.signUp(arg.username, arg.password, attributes, [], (err, res) => {
-            if (err) {
-                console.log("!!! error !!!");
-                console.log(err);
-                reject(err);
-            } else {
-                console.log("!!! success !!!");
-                console.log(res);
-                resolve(res);
-            }
+        userPool.signUp(arg.username, arg.password, attributes, [], (error, result) => {
+            ports.signupCallback.send({ error, result });
         });
-    });
+    };
 }
 
-interface ConfirmArg {
+export interface ConfirmArg {
     username: string;
     confirmationCode: string;
 }
-function confirm_(arg: ConfirmArg): Promise<any> {
-    return new Promise((resolve, reject) => {
+export function confirm(ports: IPorts): (_: ConfirmArg) => void {
+    return (arg: ConfirmArg) => {
         const cognitoUser = new CognitoUser({
             Username: arg.username,
             Pool: userPool,
         });
-        cognitoUser.confirmRegistration(arg.confirmationCode, true, (err, res) => {
-            if (err) {
-                console.log("!!! error !!!");
-                console.log(err);
-                reject(err);
-            } else {
-                console.log("!!! success !!!");
-                console.log(res);
-                resolve(res);
-            }
+        cognitoUser.confirmRegistration(arg.confirmationCode, true, (error, result) => {
+            ports.confirmCallback.send({ error, result });
         });
-    });
-}
-
-function registerPort(ports: any, name: string, func: any) {
-    if (!ports) { return; }
-    const f = ports[name];
-    if (f) {
-        f.subscribe(func);
-    }
-}
-const w: any = window;
-if (w.Elm) {
-    const app = w.Elm.Index.init();
-    const ports = app.ports;
-    registerPort(ports, "signup", signup);
-    registerPort(ports, "confirm", confirm_);
+    };
 }
