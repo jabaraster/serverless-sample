@@ -68,6 +68,7 @@ type alias Model =
     , password : String
     , signupErrorMessage : String
     , verificationCode : String
+    , loggedIn : Bool
     }
 
 
@@ -109,39 +110,28 @@ type Msg
     | AuthenticateOnSuccess JE.Value
     | AuthenticateOnFailure JE.Value
     | AuthenticateNewPasswordRequired JE.Value
-    | LoggedInCallback JE.Value
+    | LoggedInCallback (Result JD.Error Bool)
 
 
 init : () -> Url -> Key -> ( Model, Cmd Msg )
 init _ url key =
-    let
-        page =
-            routing url
-
-        model =
-            { key = key
-            , pageState = page
-            , errorMessages = []
-            , communicating = False
-            , images = RemoteResource.empty
-            , selectedImageFile = Nothing
-            , selectedImageUrl = ""
-            , uploadPhotoMeta = Nothing
-            , username = ""
-            , email = ""
-            , password = ""
-            , signupErrorMessage = ""
-            , verificationCode = ""
-            }
-    in
-    case page of
-        HomePage ->
-            ( { model | images = RemoteResource.startLoading model.images }
-            , Api.getImages ImagesLoaded
-            )
-
-        _ ->
-            ( model, Cmd.none )
+    ( { key = key
+      , pageState = routing url
+      , errorMessages = []
+      , communicating = False
+      , images = RemoteResource.empty
+      , selectedImageFile = Nothing
+      , selectedImageUrl = ""
+      , uploadPhotoMeta = Nothing
+      , username = ""
+      , email = ""
+      , password = ""
+      , signupErrorMessage = ""
+      , verificationCode = ""
+      , loggedIn = False
+      }
+    , Cognito.loggedIn ()
+    )
 
 
 routing : Url -> PageState
@@ -191,33 +181,14 @@ update msg model =
             case urlRequest of
                 Internal url ->
                     ( model
-                    , Cmd.batch
-                        [ Cognito.loggedIn ()
-                        , Nav.pushUrl model.key (Url.toString url)
-                        ]
+                    , Nav.pushUrl model.key (Url.toString url)
                     )
 
                 External href ->
                     ( model, Nav.load href )
 
         UrlChanged url ->
-            let
-                page =
-                    routing url
-
-                newModel =
-                    { model | pageState = page }
-            in
-            case page of
-                HomePage ->
-                    let
-                        ( newRr, cmd ) =
-                            RemoteResource.loadIfNecessary model.images <| Api.getImages ImagesLoaded
-                    in
-                    ( { newModel | images = newRr }, cmd )
-
-                _ ->
-                    ( newModel, Cognito.loggedIn () )
+            ( { model | pageState = routing url }, Cognito.loggedIn () )
 
         LoadImages ->
             ( { model | images = RemoteResource.startLoading model.images }
@@ -383,7 +354,13 @@ update msg model =
             )
 
         AuthenticateOnSuccess v ->
-            ( { model | communicating = False, signupErrorMessage = JE.encode 0 v }, Cmd.none )
+            ( { model
+                | communicating = False
+                , loggedIn = True
+                , signupErrorMessage = ""
+              }
+            , Cmd.none
+            )
 
         AuthenticateOnFailure v ->
             ( { model | communicating = False, signupErrorMessage = JE.encode 0 v }, Cmd.none )
@@ -391,8 +368,36 @@ update msg model =
         AuthenticateNewPasswordRequired v ->
             ( { model | communicating = False, signupErrorMessage = JE.encode 0 v }, Cmd.none )
 
-        LoggedInCallback v ->
-            Debug.log (JE.encode 0 v) <| ( model, Cmd.none )
+        LoggedInCallback res ->
+            case res of
+                Err err ->
+                    ( addErrorMessage (JD.errorToString err) model, Cmd.none )
+
+                Ok True ->
+                    case model.pageState of
+                        HomePage ->
+                            let
+                                ( rr, cmd ) =
+                                    RemoteResource.loadIfNecessary model.images <| Api.getImages ImagesLoaded
+                            in
+                            ( { model | images = rr, loggedIn = True }, cmd )
+
+                        _ ->
+                            ( { model | loggedIn = True }, Cmd.none )
+
+                Ok False ->
+                    case model.pageState of
+                        LoginPage ->
+                            ( model, Cmd.none )
+
+                        SignupPage ->
+                            ( model, Cmd.none )
+
+                        VerificationPage ->
+                            ( model, Cmd.none )
+
+                        _ ->
+                            ( model, Nav.pushUrl model.key "index.html#login" )
 
 
 subscriptions : Model -> Sub Msg
@@ -403,7 +408,7 @@ subscriptions model =
         , Cognito.authenticateOnSuccess AuthenticateOnSuccess
         , Cognito.authenticateOnFailure AuthenticateOnFailure
         , Cognito.authenticateNewPasswordRequired AuthenticateNewPasswordRequired
-        , Cognito.loggedInCallback LoggedInCallback
+        , Cognito.loggedInCallback (JD.decodeValue JD.bool) |> Sub.map LoggedInCallback
         ]
 
 
