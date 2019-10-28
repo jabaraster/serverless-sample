@@ -1,21 +1,23 @@
 module Types exposing
-    ( CognitoErrorInterface
-    , PhotoId
-    , PhotoMeta
-    , SignupResponse(..)
-    , SignupResultInterface
-    , SignupResultUser
-    , UploadStatus(..)
-    , VerifyResponse(..)
-    , ZonedTime
-    , cognitoErrorInterfaceDecoder
-    , encodeUploadStatus
-    , photoMetaDecoder
-    , signupResponseDecoder
-    , signupResultUserDecoder
-    , uploadStatusDecoder
-    , verifyResponseDecoder
+    ( ZonedTime
+    , UploadStatus(..), encodeUploadStatus, uploadStatusDecoder
+    , PhotoId, PhotoMeta, photoMetaDecoder
+    , CognitoErrorInterface, cognitoErrorInterfaceDecoder
+    , SignupResultUser, signupResultUserDecoder
+    , VerifyResponse(..), verifyResponseDecoder
+    , SignupResponse(..), SignupResultInterface, signupResponseDecoder, signupResultInterfaceDecoder
     )
+
+{-|
+
+@docs ZonedTime
+@docs UploadStatus, encodeUploadStatus, uploadStatusDecoder
+@docs PhotoId, PhotoMeta, photoMetaDecoder
+@docs CognitoErrorInterface, cognitoErrorInterfaceDecoder
+@docs SignupResponse signupResponseDecoder, SignupResultInterface signupResultInterfaceDecoder, SignupResultUser, signupResultUserDecoder
+@docs VerifyResponse, verifyResponseDecoder
+
+-}
 
 import Dict
 import Json.Decode as JD

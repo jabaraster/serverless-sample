@@ -12,6 +12,9 @@ import * as cognito from "./cognito";
         if (!sub) { return; }
         sub.subscribe(callback);
     };
+
     f(cognito.signup(ports), ports.signup);
     f(cognito.verify(ports), ports.verify);
+    f(cognito.authenticate(ports), ports.authenticate);
+    f(cognito.loggedIn(ports), ports.loggedIn);
 })();

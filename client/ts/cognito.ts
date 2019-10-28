@@ -1,7 +1,9 @@
 import {
+    AuthenticationDetails,
     CognitoUser,
     CognitoUserAttribute,
     CognitoUserPool,
+    CognitoUserSession,
 } from "amazon-cognito-identity-js";
 
 const USER_POOL_ID = "ap-northeast-1_ghBpsqysn";
@@ -23,6 +25,14 @@ export interface IPorts {
 
     verify?: ISubscriber;
     verifyCallback: ISender;
+
+    authenticate: ISubscriber;
+    authenticateOnSuccess: ISender;
+    authenticateOnFailure: ISender;
+    authenticateNewPasswordRequired: ISender;
+
+    loggedIn: ISubscriber;
+    loggedInCallback: ISender;
 }
 
 export interface IApp {
@@ -59,5 +69,62 @@ export function verify(ports: IPorts): (_: VerifyArg) => void {
         cognitoUser.confirmRegistration(arg.verificationCode, true, (error, result) => {
             ports.verifyCallback.send({ error, result });
         });
+    };
+}
+
+export interface AuthenticateArg {
+    email: string;
+    password: string;
+}
+export function authenticate(ports: IPorts): (_: AuthenticateArg) => void {
+    return (arg: AuthenticateArg) => {
+        const authenticationDetails = new AuthenticationDetails({
+            Username: arg.email,
+            Password: arg.password,
+        });
+        const cognitoUser = new CognitoUser({
+            Username: arg.email,
+            Pool: userPool,
+        });
+        cognitoUser.authenticateUser(authenticationDetails, {
+            onSuccess: (
+                session: CognitoUserSession,
+                userConfirmationNecessary?: boolean,
+            ) => {
+                ports.authenticateOnSuccess.send({ session, userConfirmationNecessary });
+            },
+            onFailure: (err) => {
+                ports.authenticateOnFailure.send(err);
+            },
+            newPasswordRequired: (
+                userAttributes: any,
+                requiredAttributes: any,
+            ) => {
+                ports.authenticateNewPasswordRequired.send({ userAttributes, requiredAttributes });
+            },
+        });
+    };
+}
+
+export function loggedIn(ports: IPorts): () => void {
+    return async () => {
+        const currentUser = userPool.getCurrentUser();
+        if (!currentUser) {
+            ports.loggedInCallback.send(false);
+            return;
+        }
+
+        try {
+            const session = currentUser.getSession((a: any) => {
+                console.log(`In getSession: ${a}`);
+            });
+            console.log(`Session: ${session}`);
+            ports.loggedInCallback.send(false);
+
+        } catch (err) {
+            console.log("!!! error !!!");
+            console.log(err);
+            ports.loggedInCallback.send(false);
+        }
     };
 }

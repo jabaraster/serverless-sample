@@ -104,6 +104,12 @@ type Msg
     | VerificationCodeChange String
     | Verify
     | VerifyCallback (Result JD.Error VerifyResponse)
+      -- Login
+    | Authenticate
+    | AuthenticateOnSuccess JE.Value
+    | AuthenticateOnFailure JE.Value
+    | AuthenticateNewPasswordRequired JE.Value
+    | LoggedInCallback JE.Value
 
 
 init : () -> Url -> Key -> ( Model, Cmd Msg )
@@ -184,7 +190,12 @@ update msg model =
         LinkClicked urlRequest ->
             case urlRequest of
                 Internal url ->
-                    ( model, Nav.pushUrl model.key (Url.toString url) )
+                    ( model
+                    , Cmd.batch
+                        [ Cognito.loggedIn ()
+                        , Nav.pushUrl model.key (Url.toString url)
+                        ]
+                    )
 
                 External href ->
                     ( model, Nav.load href )
@@ -206,7 +217,7 @@ update msg model =
                     ( { newModel | images = newRr }, cmd )
 
                 _ ->
-                    ( newModel, Cmd.none )
+                    ( newModel, Cognito.loggedIn () )
 
         LoadImages ->
             ( { model | images = RemoteResource.startLoading model.images }
@@ -366,12 +377,33 @@ update msg model =
                     , Nav.pushUrl model.key "/index.html"
                     )
 
+        Authenticate ->
+            ( { model | communicating = True }
+            , Cognito.authenticate { email = model.email, password = model.password }
+            )
+
+        AuthenticateOnSuccess v ->
+            ( { model | communicating = False, signupErrorMessage = JE.encode 0 v }, Cmd.none )
+
+        AuthenticateOnFailure v ->
+            ( { model | communicating = False, signupErrorMessage = JE.encode 0 v }, Cmd.none )
+
+        AuthenticateNewPasswordRequired v ->
+            ( { model | communicating = False, signupErrorMessage = JE.encode 0 v }, Cmd.none )
+
+        LoggedInCallback v ->
+            Debug.log (JE.encode 0 v) <| ( model, Cmd.none )
+
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
         [ Cognito.signupCallback (JD.decodeValue Types.signupResponseDecoder) |> Sub.map SignupCallback
         , Cognito.verifyCallback (JD.decodeValue Types.verifyResponseDecoder) |> Sub.map VerifyCallback
+        , Cognito.authenticateOnSuccess AuthenticateOnSuccess
+        , Cognito.authenticateOnFailure AuthenticateOnFailure
+        , Cognito.authenticateNewPasswordRequired AuthenticateNewPasswordRequired
+        , Cognito.loggedInCallback LoggedInCallback
         ]
 
 
@@ -476,11 +508,13 @@ viewForPage model =
                 [ div [ class "pure-u-1 form-box l-box" ]
                     [ h2 [] [ text "Login" ]
                     , div [ class "pure-form pure-form-stacked" ]
-                        [ viewUsername model.username
-                        , viewEmail model.email
+                        [ -- viewUsername model.username
+                          viewEmail model.email
                         , viewPassword model.password
-                        , button [ class "pure-button pure-button-primary" ] [ text "Singup" ]
+                        , button [ onClick Authenticate, class "pure-button pure-button-primary" ] [ text "Singup" ]
                         ]
+                    , hr [] []
+                    , span [ class "error" ] [ text model.signupErrorMessage ]
                     ]
                 ]
             }
