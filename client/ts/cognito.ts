@@ -1,10 +1,7 @@
-import * as AWS from "aws-sdk";
 import {
-    AuthenticationDetails,
     CognitoUser,
     CognitoUserAttribute,
     CognitoUserPool,
-    ISignUpResult
 } from "amazon-cognito-identity-js";
 
 const USER_POOL_ID = "ap-northeast-1_ghBpsqysn";
@@ -24,8 +21,8 @@ export interface IPorts {
     signup?: ISubscriber;
     signupCallback: ISender;
 
-    confirm?: ISubscriber;
-    confirmCallback: ISender;
+    verify?: ISubscriber;
+    verifyCallback: ISender;
 }
 
 export interface IApp {
@@ -49,18 +46,18 @@ export function signup(ports: IPorts): (_: SignupArg) => void {
     };
 }
 
-export interface ConfirmArg {
+export interface VerifyArg {
     username: string;
-    confirmationCode: string;
+    verificationCode: string;
 }
-export function confirm(ports: IPorts): (_: ConfirmArg) => void {
-    return (arg: ConfirmArg) => {
+export function verify(ports: IPorts): (_: VerifyArg) => void {
+    return (arg: VerifyArg) => {
         const cognitoUser = new CognitoUser({
             Username: arg.username,
             Pool: userPool,
         });
-        cognitoUser.confirmRegistration(arg.confirmationCode, true, (error, result) => {
-            ports.confirmCallback.send({ error, result });
+        cognitoUser.confirmRegistration(arg.verificationCode, true, (error, result) => {
+            ports.verifyCallback.send({ error, result });
         });
     };
 }

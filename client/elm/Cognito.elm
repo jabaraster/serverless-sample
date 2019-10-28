@@ -1,4 +1,4 @@
-port module Cognito exposing (confirm, confirmCallback, errors, signup, signupCallback, signupSuccess)
+port module Cognito exposing (errors, signup, signupCallback, signupSuccess, verify, verifyCallback)
 
 import Json.Encode
 
@@ -9,10 +9,10 @@ port signup : { username : String, email : String, password : String } -> Cmd ms
 port signupCallback : (Json.Encode.Value -> msg) -> Sub msg
 
 
-port confirm : { username : String, confirmationCode : String } -> Cmd msg
+port verify : { username : String, verificationCode : String } -> Cmd msg
 
 
-port confirmCallback : (Json.Encode.Value -> msg) -> Sub msg
+port verifyCallback : (Json.Encode.Value -> msg) -> Sub msg
 
 
 port errors : (String -> msg) -> Sub msg

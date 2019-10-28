@@ -11,13 +11,14 @@ import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import Http
+import Json.Decode as JD
 import Json.Encode as JE
 import List.Extra as LE
 import List.Split as LS
 import RemoteResource exposing (RemoteResource)
 import Task
 import Time exposing (Posix)
-import Types exposing (PhotoMeta, UploadStatus(..))
+import Types exposing (PhotoMeta, SignupResponse(..), UploadStatus(..), VerifyResponse(..))
 import Url exposing (Url)
 import Url.Parser as UP exposing ((</>))
 
@@ -40,12 +41,16 @@ type PageState
     | LoginPage
     | UploadPage
     | SettingsPage
+    | VerificationPage
     | NotFoundPage
 
 
 type alias Model =
-    { key : Key
+    { -- General
+      key : Key
     , pageState : PageState
+    , errorMessages : List String
+    , communicating : Bool
 
     -- Images
     , images : RemoteResource (List PhotoMeta)
@@ -56,24 +61,30 @@ type alias Model =
 
     -- Upload photo process
     , uploadPhotoMeta : Maybe PhotoMeta
-    , uploading : Bool
 
     -- Singup or login
     , username : String
     , email : String
     , password : String
-    , signupResult : String
+    , signupErrorMessage : String
+    , verificationCode : String
     }
 
 
+addErrorMessage : String -> Model -> Model
+addErrorMessage s model =
+    { model | errorMessages = s :: model.errorMessages }
+
+
 type Msg
-    = LinkClicked UrlRequest
+    = -- General
+      LinkClicked UrlRequest
     | UrlChanged Url
       -- Images load
     | LoadImages
     | ImagesLoaded (Result Http.Error (List PhotoMeta))
     | ImageRequested
-      -- Photo select
+      -- Photo selecs
     | ImageSelected File
     | SelectedImageLoaded String
       -- Upload photo process
@@ -89,7 +100,10 @@ type Msg
     | PasswordChange String
       -- Signup
     | Signup
-    | SignupCallback JE.Value
+    | SignupCallback (Result JD.Error SignupResponse)
+    | VerificationCodeChange String
+    | Verify
+    | VerifyCallback (Result JD.Error VerifyResponse)
 
 
 init : () -> Url -> Key -> ( Model, Cmd Msg )
@@ -101,15 +115,17 @@ init _ url key =
         model =
             { key = key
             , pageState = page
+            , errorMessages = []
+            , communicating = False
             , images = RemoteResource.empty
             , selectedImageFile = Nothing
             , selectedImageUrl = ""
             , uploadPhotoMeta = Nothing
-            , uploading = False
             , username = ""
             , email = ""
             , password = ""
-            , signupResult = ""
+            , signupErrorMessage = ""
+            , verificationCode = ""
             }
     in
     case page of
@@ -142,6 +158,9 @@ routing url =
 
                                     Just "settings" ->
                                         SettingsPage
+
+                                    Just "verification" ->
+                                        VerificationPage
 
                                     Just "" ->
                                         HomePage
@@ -217,7 +236,7 @@ update msg model =
 
                 Just file ->
                     ( { model
-                        | uploading = True
+                        | communicating = True
                       }
                     , Api.postPhotoMeta { imageType = File.mime file, size = File.size file } PostPhotoMetaCompleted
                     )
@@ -225,7 +244,7 @@ update msg model =
         PostPhotoMetaCompleted res ->
             case model.selectedImageFile of
                 Nothing ->
-                    ( model, Cmd.none )
+                    ( { model | communicating = False }, Cmd.none )
 
                 Just file ->
                     case res of
@@ -240,7 +259,7 @@ update msg model =
         SelectedImageBytesLoaded data ->
             case model.uploadPhotoMeta of
                 Nothing ->
-                    ( model, Cmd.none )
+                    ( { model | communicating = False }, Cmd.none )
 
                 Just meta ->
                     ( model
@@ -267,7 +286,7 @@ update msg model =
                         | selectedImageFile = Nothing
                         , selectedImageUrl = ""
                         , uploadPhotoMeta = Nothing
-                        , uploading = False
+                        , communicating = False
                     }
             in
             case model.uploadPhotoMeta of
@@ -276,7 +295,7 @@ update msg model =
 
                 Just meta ->
                     ( { newModel
-                        | images = RemoteResource.map (flip (++) [ meta ]) model.images
+                        | images = RemoteResource.map ((::) meta) model.images
                       }
                     , Nav.pushUrl model.key "/index.html"
                     )
@@ -291,7 +310,7 @@ update msg model =
             ( { model | password = v }, Cmd.none )
 
         Signup ->
-            ( { model | uploading = True }
+            ( { model | communicating = True }
             , Cognito.signup
                 { username = model.username
                 , email = model.email
@@ -299,13 +318,61 @@ update msg model =
                 }
             )
 
-        SignupCallback v ->
-            Debug.log "" ( { model | signupResult = JE.encode 0 v }, Cmd.none )
+        SignupCallback res ->
+            let
+                newModel =
+                    { model | communicating = False }
+            in
+            case res of
+                Err err ->
+                    ( addErrorMessage (JD.errorToString err) newModel, Cmd.none )
+
+                Ok (SignupError err) ->
+                    ( { newModel | signupErrorMessage = err.message }, Cmd.none )
+
+                Ok (SignupResult _) ->
+                    ( { newModel | signupErrorMessage = "" }
+                    , Nav.pushUrl model.key "/index.html#verification"
+                    )
+
+        VerificationCodeChange v ->
+            ( { model | verificationCode = v }, Cmd.none )
+
+        Verify ->
+            ( { model | communicating = True }
+            , Cognito.verify { username = model.username, verificationCode = model.verificationCode }
+            )
+
+        VerifyCallback res ->
+            let
+                newModel =
+                    { model | communicating = False }
+            in
+            case res of
+                Err err ->
+                    ( addErrorMessage (JD.errorToString err) newModel, Cmd.none )
+
+                Ok (VerifyError err) ->
+                    ( { newModel | signupErrorMessage = err.message }, Cmd.none )
+
+                Ok VerifyResult ->
+                    ( { newModel
+                        | signupErrorMessage = ""
+                        , username = ""
+                        , email = ""
+                        , password = ""
+                        , verificationCode = ""
+                      }
+                    , Nav.pushUrl model.key "/index.html"
+                    )
 
 
 subscriptions : Model -> Sub Msg
-subscriptions _ =
-    Cognito.signupCallback SignupCallback
+subscriptions model =
+    Sub.batch
+        [ Cognito.signupCallback (JD.decodeValue Types.signupResponseDecoder) |> Sub.map SignupCallback
+        , Cognito.verifyCallback (JD.decodeValue Types.verifyResponseDecoder) |> Sub.map VerifyCallback
+        ]
 
 
 view : Model -> Document Msg
@@ -409,9 +476,9 @@ viewForPage model =
                 [ div [ class "pure-u-1 form-box l-box" ]
                     [ h2 [] [ text "Login" ]
                     , div [ class "pure-form pure-form-stacked" ]
-                        [ viewUsername
-                        , viewEmail
-                        , viewPassword
+                        [ viewUsername model.username
+                        , viewEmail model.email
+                        , viewPassword model.password
                         , button [ class "pure-button pure-button-primary" ] [ text "Singup" ]
                         ]
                     ]
@@ -423,12 +490,30 @@ viewForPage model =
             , body =
                 [ div [ class "pure-u-1 form-box l-box" ]
                     [ h2 [] [ text "Signup" ]
-                    , Html.form [ class "pure-form pure-form-stacked" ]
-                        [ viewUsername
-                        , viewEmail
-                        , viewPassword
+                    , div [ class "pure-form pure-form-stacked" ]
+                        [ viewUsername model.username
+                        , viewEmail model.email
+                        , viewPassword model.password
                         , button [ onClick Signup, class "pure-button pure-button-primary" ] [ text "Singup" ]
                         ]
+                    , hr [] []
+                    , span [ class "error" ] [ text model.signupErrorMessage ]
+                    ]
+                ]
+            }
+
+        VerificationPage ->
+            { title = "Verification"
+            , body =
+                [ div [ class "pure-u-1 form-box l-box" ]
+                    [ h2 [] [ text "Signup verification" ]
+                    , p [] [ text "Verification sent your email address." ]
+                    , div [ class "pure-form pure-form-stacked" ]
+                        [ input [ type_ "text", value model.verificationCode, onInput VerificationCodeChange, placeholder "Verification code" ] []
+                        , button [ onClick Verify, class "pure-button pure-button-primary" ] [ text "Confirm" ]
+                        ]
+                    , hr [] []
+                    , span [ class "error" ] [ text model.signupErrorMessage ]
                     ]
                 ]
             }
@@ -475,16 +560,16 @@ flip f b a =
 isLoading : Model -> Bool
 isLoading model =
     model.images.loading
-        || model.uploading
+        || model.communicating
 
 
-viewUsername =
-    label [] [ input [ onInput UsernameChange, type_ "text", placeholder "Username" ] [] ]
+viewUsername username =
+    label [] [ input [ onInput UsernameChange, value username, type_ "text", placeholder "Username" ] [] ]
 
 
-viewEmail =
-    label [] [ input [ onInput EmailChange, type_ "email", placeholder "Email" ] [] ]
+viewEmail email =
+    label [] [ input [ onInput EmailChange, value email, type_ "email", placeholder "Email" ] [] ]
 
 
-viewPassword =
-    label [] [ input [ onInput PasswordChange, type_ "password", placeholder "Password" ] [] ]
+viewPassword password =
+    label [] [ input [ onInput PasswordChange, value password, type_ "password", placeholder "Password" ] [] ]

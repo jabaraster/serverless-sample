@@ -12,7 +12,6 @@ import * as cognito from "./cognito";
         if (!sub) { return; }
         sub.subscribe(callback);
     };
-    console.log(ports);
     f(cognito.signup(ports), ports.signup);
-    f(cognito.confirm(ports), ports.confirm);
+    f(cognito.verify(ports), ports.verify);
 })();
