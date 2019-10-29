@@ -17,4 +17,5 @@ import * as cognito from "./cognito";
     f(cognito.verify(ports), ports.verify);
     f(cognito.authenticate(ports), ports.authenticate);
     f(cognito.loggedIn(ports), ports.loggedIn);
+    f(cognito.logout(ports), ports.logout);
 })();

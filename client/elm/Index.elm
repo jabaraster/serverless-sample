@@ -18,7 +18,7 @@ import List.Split as LS
 import RemoteResource exposing (RemoteResource)
 import Task
 import Time exposing (Posix)
-import Types exposing (PhotoMeta, SignupResponse(..), UploadStatus(..), VerifyResponse(..))
+import Types exposing (AuthenticationFailure, AuthenticationFailureCode(..), PhotoMeta, SignupResponse(..), UploadStatus(..), VerifyResponse(..))
 import Url exposing (Url)
 import Url.Parser as UP exposing ((</>))
 
@@ -108,9 +108,11 @@ type Msg
       -- Login
     | Authenticate
     | AuthenticateOnSuccess JE.Value
-    | AuthenticateOnFailure JE.Value
+    | AuthenticateOnFailure (Result JD.Error AuthenticationFailure)
     | AuthenticateNewPasswordRequired JE.Value
     | LoggedInCallback (Result JD.Error Bool)
+    | Logout
+    | LogoutCallback JE.Value
 
 
 init : () -> Url -> Key -> ( Model, Cmd Msg )
@@ -134,12 +136,41 @@ init _ url key =
     )
 
 
+basePath =
+    "index.html"
+
+
+pageStateToUrl : PageState -> String
+pageStateToUrl page =
+    case page of
+        HomePage ->
+            "/" ++ basePath
+
+        SignupPage ->
+            "/" ++ basePath ++ "#signup"
+
+        LoginPage ->
+            "/" ++ basePath ++ "#login"
+
+        UploadPage ->
+            "/" ++ basePath ++ "#upload"
+
+        SettingsPage ->
+            "/" ++ basePath ++ "#settings"
+
+        VerificationPage ->
+            "/" ++ basePath ++ "#verification"
+
+        NotFoundPage ->
+            "/" ++ basePath
+
+
 routing : Url -> PageState
 routing url =
     Maybe.withDefault NotFoundPage <|
         UP.parse
             (UP.oneOf
-                [ UP.s "index.html"
+                [ UP.s basePath
                     </> UP.fragment
                             (\mv ->
                                 case mv of
@@ -167,7 +198,7 @@ routing url =
                                     Nothing ->
                                         HomePage
                             )
-                , UP.map HomePage <| UP.s "index.html"
+                , UP.map HomePage <| UP.s basePath
                 , UP.map HomePage UP.top
                 ]
             )
@@ -279,7 +310,7 @@ update msg model =
                     ( { newModel
                         | images = RemoteResource.map ((::) meta) model.images
                       }
-                    , Nav.pushUrl model.key "/index.html"
+                    , Nav.pushUrl model.key <| pageStateToUrl HomePage
                     )
 
         UsernameChange v ->
@@ -314,7 +345,7 @@ update msg model =
 
                 Ok (SignupResult _) ->
                     ( { newModel | signupErrorMessage = "" }
-                    , Nav.pushUrl model.key "/index.html#verification"
+                    , Nav.pushUrl model.key <| pageStateToUrl VerificationPage
                     )
 
         VerificationCodeChange v ->
@@ -345,7 +376,7 @@ update msg model =
                         , password = ""
                         , verificationCode = ""
                       }
-                    , Nav.pushUrl model.key "/index.html"
+                    , Nav.pushUrl model.key <| pageStateToUrl LoginPage
                     )
 
         Authenticate ->
@@ -357,13 +388,31 @@ update msg model =
             ( { model
                 | communicating = False
                 , loggedIn = True
+                , username = ""
+                , email = ""
+                , password = ""
                 , signupErrorMessage = ""
               }
-            , Cmd.none
+            , Nav.pushUrl model.key <| pageStateToUrl HomePage
             )
 
-        AuthenticateOnFailure v ->
-            ( { model | communicating = False, signupErrorMessage = JE.encode 0 v }, Cmd.none )
+        AuthenticateOnFailure res ->
+            case res of
+                Err err ->
+                    ( { model
+                        | communicating = False
+                        , signupErrorMessage = JD.errorToString err
+                      }
+                    , Cmd.none
+                    )
+
+                Ok fail ->
+                    ( { model
+                        | communicating = False
+                        , signupErrorMessage = Types.authenticationFailureCodeToString fail.code ++ ": " ++ fail.message
+                      }
+                    , Cmd.none
+                    )
 
         AuthenticateNewPasswordRequired v ->
             ( { model | communicating = False, signupErrorMessage = JE.encode 0 v }, Cmd.none )
@@ -397,7 +446,22 @@ update msg model =
                             ( model, Cmd.none )
 
                         _ ->
-                            ( model, Nav.pushUrl model.key "index.html#login" )
+                            ( model, Nav.pushUrl model.key <| pageStateToUrl LoginPage )
+
+        Logout ->
+            ( { model
+                | communicating = True
+              }
+            , Cognito.logout ()
+            )
+
+        LogoutCallback _ ->
+            ( { model
+                | loggedIn = False
+                , communicating = False
+              }
+            , Nav.pushUrl model.key <| pageStateToUrl LoginPage
+            )
 
 
 subscriptions : Model -> Sub Msg
@@ -406,9 +470,10 @@ subscriptions model =
         [ Cognito.signupCallback (JD.decodeValue Types.signupResponseDecoder) |> Sub.map SignupCallback
         , Cognito.verifyCallback (JD.decodeValue Types.verifyResponseDecoder) |> Sub.map VerifyCallback
         , Cognito.authenticateOnSuccess AuthenticateOnSuccess
-        , Cognito.authenticateOnFailure AuthenticateOnFailure
+        , Cognito.authenticateOnFailure (JD.decodeValue Types.authenticationFailureDecoder) |> Sub.map AuthenticateOnFailure
         , Cognito.authenticateNewPasswordRequired AuthenticateNewPasswordRequired
         , Cognito.loggedInCallback (JD.decodeValue JD.bool) |> Sub.map LoggedInCallback
+        , Cognito.logoutCallback LogoutCallback
         ]
 
 
@@ -425,17 +490,25 @@ view model =
             else
                 []
 
+        menus =
+            [ ( model.loggedIn, viewMenuLink { currentPageState = model.pageState, menuPageState = HomePage, labelText = "Home" } )
+            , ( model.loggedIn, viewMenuLink { currentPageState = model.pageState, menuPageState = UploadPage, labelText = "Upload" } )
+            , ( model.loggedIn, viewMenuLink { currentPageState = model.pageState, menuPageState = SettingsPage, labelText = "Settings" } )
+            , ( not model.loggedIn, viewMenuLink { currentPageState = model.pageState, menuPageState = SignupPage, labelText = "Signup" } )
+            , ( not model.loggedIn, viewMenuLink { currentPageState = model.pageState, menuPageState = LoginPage, labelText = "Login" } )
+            , ( model.loggedIn
+              , li [ class "pure-menu-item" ]
+                    [ a [ onClick Logout, class "pure-menu-link", href "#logout" ] [ text "Logout" ] ]
+              )
+            ]
+
         header =
             div [ class "header" ]
                 [ div [ class "pure-menu pure-menu-horizontal" ]
                     [ a [ class "pure-menu-heading", href "" ] [ text "Photo Gallery" ]
-                    , ul [ class "pure-menu-list" ]
-                        [ viewMenuLink { currentPageState = model.pageState, menuPageState = HomePage, fragment = "", labelText = "Home" }
-                        , viewMenuLink { currentPageState = model.pageState, menuPageState = UploadPage, fragment = "upload", labelText = "Upload" }
-                        , viewMenuLink { currentPageState = model.pageState, menuPageState = SettingsPage, fragment = "settings", labelText = "Settings" }
-                        , viewMenuLink { currentPageState = model.pageState, menuPageState = SignupPage, fragment = "signup", labelText = "Signup" }
-                        , viewMenuLink { currentPageState = model.pageState, menuPageState = LoginPage, fragment = "login", labelText = "Login" }
-                        ]
+                    , ul [ class "pure-menu-list" ] <|
+                        List.map Tuple.second <|
+                            List.filter Tuple.first menus
                     ]
                 ]
 
@@ -459,13 +532,12 @@ view model =
 viewMenuLink :
     { currentPageState : PageState
     , menuPageState : PageState
-    , fragment : String
     , labelText : String
     }
     -> Html Msg
 viewMenuLink arg =
     li [ class "pure-menu-item", classList [ ( "pure-menu-selected", arg.currentPageState == arg.menuPageState ) ] ]
-        [ a [ class "pure-menu-link", href <| "#" ++ arg.fragment ] [ text arg.labelText ] ]
+        [ a [ class "pure-menu-link", href <| pageStateToUrl arg.menuPageState ] [ text arg.labelText ] ]
 
 
 viewForPage : Model -> Document Msg
@@ -513,8 +585,7 @@ viewForPage model =
                 [ div [ class "pure-u-1 form-box l-box" ]
                     [ h2 [] [ text "Login" ]
                     , div [ class "pure-form pure-form-stacked" ]
-                        [ -- viewUsername model.username
-                          viewEmail model.email
+                        [ viewInput { type_ = "text", value = model.email, inputChange = EmailChange, placeholder = "Username of Email" }
                         , viewPassword model.password
                         , button [ onClick Authenticate, class "pure-button pure-button-primary" ] [ text "Singup" ]
                         ]
@@ -530,8 +601,8 @@ viewForPage model =
                 [ div [ class "pure-u-1 form-box l-box" ]
                     [ h2 [] [ text "Signup" ]
                     , div [ class "pure-form pure-form-stacked" ]
-                        [ viewUsername model.username
-                        , viewEmail model.email
+                        [ viewInput { type_ = "text", value = model.username, inputChange = UsernameChange, placeholder = "Username" }
+                        , viewInput { type_ = "text", value = model.email, inputChange = EmailChange, placeholder = "Email" }
                         , viewPassword model.password
                         , button [ onClick Signup, class "pure-button pure-button-primary" ] [ text "Singup" ]
                         ]
@@ -602,13 +673,17 @@ isLoading model =
         || model.communicating
 
 
-viewUsername username =
-    label [] [ input [ onInput UsernameChange, value username, type_ "text", placeholder "Username" ] [] ]
+viewInput :
+    { value : String
+    , type_ : String
+    , placeholder : String
+    , inputChange : String -> Msg
+    }
+    -> Html Msg
+viewInput arg =
+    label [] [ input [ onInput arg.inputChange, value arg.value, type_ arg.type_, placeholder arg.placeholder ] [] ]
 
 
-viewEmail email =
-    label [] [ input [ onInput EmailChange, value email, type_ "email", placeholder "Email" ] [] ]
-
-
-viewPassword password =
-    label [] [ input [ onInput PasswordChange, value password, type_ "password", placeholder "Password" ] [] ]
+viewPassword : String -> Html Msg
+viewPassword val =
+    viewInput { type_ = "password", value = val, inputChange = PasswordChange, placeholder = "Password" }

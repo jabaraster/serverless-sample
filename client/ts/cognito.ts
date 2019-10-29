@@ -33,6 +33,9 @@ export interface IPorts {
 
     loggedIn: ISubscriber;
     loggedInCallback: ISender;
+
+    logout: ISubscriber;
+    logoutCallback: ISender;
 }
 
 export interface IApp {
@@ -107,24 +110,39 @@ export function authenticate(ports: IPorts): (_: AuthenticateArg) => void {
 }
 
 export function loggedIn(ports: IPorts): () => void {
-    return async () => {
+    return () => {
         const currentUser = userPool.getCurrentUser();
         if (!currentUser) {
             ports.loggedInCallback.send(false);
             return;
         }
-
+        console.log(currentUser);
         try {
-            const session = currentUser.getSession((a: any) => {
-                console.log(`In getSession: ${a}`);
-            });
-            console.log(`Session: ${session}`);
-            ports.loggedInCallback.send(false);
+            const session = currentUser.getSignInUserSession();
+            console.log(session);
+            if (!session) {
+                ports.loggedInCallback.send(false);
+                return;
+            }
+            ports.loggedInCallback.send(session.isValid());
 
         } catch (err) {
             console.log("!!! error !!!");
             console.log(err);
             ports.loggedInCallback.send(false);
         }
+    };
+}
+
+export function logout(ports: IPorts): () => void {
+    return () => {
+        const currentUser = userPool.getCurrentUser();
+        console.log(currentUser);
+        if (!currentUser) {
+            ports.logoutCallback.send({});
+            return;
+        }
+        currentUser.signOut();
+        ports.logoutCallback.send({});
     };
 }

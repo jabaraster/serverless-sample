@@ -2,8 +2,7 @@ port module Cognito exposing
     ( signup, signupCallback
     , verify, verifyCallback
     , authenticate, authenticateOnSuccess, authenticateOnFailure, authenticateNewPasswordRequired
-    , loggedIn
-    , loggedInCallback
+    , loggedIn, loggedInCallback, logout, logoutCallback
     )
 
 {-|
@@ -11,7 +10,7 @@ port module Cognito exposing
 @docs signup, signupCallback
 @docs verify, verifyCallback
 @docs authenticate, authenticateOnSuccess, authenticateOnFailure, authenticateNewPasswordRequired
-@docs loggedIn
+@docs loggedIn, loggedInCallback, logout, logoutCallback
 
 -}
 
@@ -46,3 +45,9 @@ port loggedIn : () -> Cmd msg
 
 
 port loggedInCallback : (Json.Encode.Value -> msg) -> Sub msg
+
+
+port logout : () -> Cmd msg
+
+
+port logoutCallback : (Json.Encode.Value -> msg) -> Sub msg

@@ -5,6 +5,7 @@ module Types exposing
     , CognitoErrorInterface, cognitoErrorInterfaceDecoder
     , SignupResultUser, signupResultUserDecoder
     , VerifyResponse(..), verifyResponseDecoder
+    , AuthenticationFailureCode, AuthenticationFailure, authenticationFailureDecoder, authenticationFailureCodeToString
     , SignupResponse(..), SignupResultInterface, signupResponseDecoder, signupResultInterfaceDecoder
     )
 
@@ -16,6 +17,7 @@ module Types exposing
 @docs CognitoErrorInterface, cognitoErrorInterfaceDecoder
 @docs SignupResponse signupResponseDecoder, SignupResultInterface signupResultInterfaceDecoder, SignupResultUser, signupResultUserDecoder
 @docs VerifyResponse, verifyResponseDecoder
+@docs AuthenticationFailureCode, AuthenticationFailure, authenticationFailureDecoder, authenticationFailureCodeToString
 
 -}
 
@@ -196,3 +198,45 @@ verifyResponseDecoder =
                     _ ->
                         JD.fail "Invalid json string."
             )
+
+
+type AuthenticationFailureCode
+    = NotAuthorizedException
+    | InvalidParameterException
+
+
+authenticationFailureCodeToString : AuthenticationFailureCode -> String
+authenticationFailureCodeToString c =
+    case c of
+        InvalidParameterException ->
+            "InvalidParameterException"
+
+        _ ->
+            "NotAuthorizedException"
+
+
+authenticationFailureCodeDecoder : JD.Decoder AuthenticationFailureCode
+authenticationFailureCodeDecoder =
+    JD.string
+        |> JD.andThen
+            (\s ->
+                case s of
+                    "InvalidParameterException" ->
+                        JD.succeed InvalidParameterException
+
+                    _ ->
+                        JD.succeed NotAuthorizedException
+            )
+
+
+type alias AuthenticationFailure =
+    { code : AuthenticationFailureCode
+    , message : String
+    }
+
+
+authenticationFailureDecoder : JD.Decoder AuthenticationFailure
+authenticationFailureDecoder =
+    JD.map2 AuthenticationFailure
+        (JD.field "code" authenticationFailureCodeDecoder)
+        (JD.field "message" JD.string)
