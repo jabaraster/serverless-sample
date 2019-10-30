@@ -116,28 +116,21 @@ export function loggedIn(ports: IPorts): () => void {
             ports.loggedInCallback.send(false);
             return;
         }
-        console.log(currentUser);
-        try {
-            const session = currentUser.getSignInUserSession();
-            console.log(session);
-            if (!session) {
+        currentUser.getSession((err: any, res: any) => {
+            if (!err) {
+                console.log("!!! error !!!");
+                console.log(err);
                 ports.loggedInCallback.send(false);
                 return;
             }
-            ports.loggedInCallback.send(session.isValid());
-
-        } catch (err) {
-            console.log("!!! error !!!");
-            console.log(err);
-            ports.loggedInCallback.send(false);
-        }
+            ports.loggedInCallback.send(true);
+        });
     };
 }
 
 export function logout(ports: IPorts): () => void {
     return () => {
         const currentUser = userPool.getCurrentUser();
-        console.log(currentUser);
         if (!currentUser) {
             ports.logoutCallback.send({});
             return;
