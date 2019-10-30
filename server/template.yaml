@@ -1,7 +1,64 @@
 AWSTemplateFormatVersion: 2010-09-09
 Transform: AWS::Serverless-2016-10-31
 Description: An AWS Serverless Specification template describing your function.
+
+Globals:
+  Function:
+    Runtime: nodejs10.x
+    MemorySize: 128
+    Timeout: 15
+    Environment:
+      Variables: 
+        BUCKET_NAME: !Ref PhotoBucket
+        TABLE_NAME : !Ref PhotoTable
+
 Resources:
+  PhotoBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      WebsiteConfiguration: {}
+      CorsConfiguration:
+        CorsRules:
+          -
+            AllowedHeaders:
+                - "*"
+            AllowedMethods: 
+                - "GET"
+                - "PUT"
+                - "POST"
+                - "DELETE"
+                - "HEAD"
+            AllowedOrigins: 
+                - "*"
+            MaxAge: 3000
+  PhotoBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref PhotoBucket
+      PolicyDocument:
+        Statement:
+          -
+            Action: s3:GetObject
+            Effect: Allow
+            Principal : "*"
+            Resource:
+              Fn::Join:
+                - ""
+                - 
+                  - "arn:aws:s3:::"
+                  - !Ref PhotoBucket
+                  - "/*"
+
+  PhotoTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey:
+        Name: photoId
+        Type: String
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
   UserPool:
     Type: AWS::Cognito::UserPool
     Properties:
@@ -27,21 +84,20 @@ Resources:
           RequireNumbers: false
           MinimumLength: 6
           RequireUppercase: false
+
   UserPoolClient:
     Type: AWS::Cognito::UserPoolClient
     Properties:
       ClientName: photo-app
       GenerateSecret: false
       UserPoolId: !Ref UserPool
+
   optionsImages:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: dist/src/
       Handler: options.lambdaHandler
-      Runtime: nodejs10.x
       Description : ""
-      MemorySize: 128
-      Timeout: 3
       Events:
         Api:
           Type: Api
@@ -55,13 +111,9 @@ Resources:
       Handler: postImage.lambdaHandler
       Runtime: nodejs10.x
       Description : ""
-      MemorySize: 128
-      Timeout: 15
-      Role: arn:aws:iam::195957709288:role/lambda-dynamodb-access
-      Environment:
-        Variables: 
-          BUCKET_NAME: jabara-serverless-app-photos
-          TABLE_NAME : photos
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PhotoTable
       Events:
         Api:
           Type: Api
@@ -73,15 +125,10 @@ Resources:
     Properties:
       CodeUri: dist/src/
       Handler: updateImage.lambdaHandler
-      Runtime: nodejs10.x
       Description : ""
-      MemorySize: 128
-      Timeout: 15
-      Role: arn:aws:iam::195957709288:role/lambda-dynamodb-access
-      Environment:
-        Variables: 
-          BUCKET_NAME: jabara-serverless-app-photos
-          TABLE_NAME : photos
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PhotoTable
       Events:
         Api:
           Type: Api
@@ -93,15 +140,10 @@ Resources:
     Properties:
       CodeUri: dist/src/
       Handler: getImages.lambdaHandler
-      Runtime: nodejs10.x
       Description : ""
-      MemorySize: 128
-      Timeout: 15
-      Role: arn:aws:iam::195957709288:role/lambda-dynamodb-access
-      Environment:
-        Variables: 
-          BUCKET_NAME: jabara-serverless-app-photos
-          TABLE_NAME : photos
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PhotoTable
       Events:
         Api:
           Type: Api
@@ -113,10 +155,7 @@ Resources:
     Properties:
       CodeUri: dist/src/
       Handler: options.lambdaHandler
-      Runtime: nodejs10.x
       Description : ""
-      MemorySize: 128
-      Timeout: 3
       Events:
         Api:
           Type: Api
@@ -128,15 +167,10 @@ Resources:
     Properties:
       CodeUri: dist/src/
       Handler: getImageById.lambdaHandler
-      Runtime: nodejs10.x
       Description : ""
-      MemorySize: 128
-      Timeout: 15
-      Role: arn:aws:iam::195957709288:role/lambda-dynamodb-access
-      Environment:
-        Variables: 
-          BUCKET_NAME: jabara-serverless-app-photos
-          TABLE_NAME : photos
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PhotoTable
       Events:
         Api:
           Type: Api
@@ -148,15 +182,10 @@ Resources:
     Properties:
       CodeUri: dist/src/
       Handler: deleteImageById.lambdaHandler
-      Runtime: nodejs10.x
       Description : ""
-      MemorySize: 128
-      Timeout: 15
-      Role: arn:aws:iam::195957709288:role/lambda-dynamodb-access
-      Environment:
-        Variables: 
-          BUCKET_NAME: jabara-serverless-app-photos
-          TABLE_NAME : photos
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PhotoTable
       Events:
         Api:
           Type: Api
