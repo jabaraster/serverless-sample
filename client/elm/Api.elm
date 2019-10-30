@@ -1,4 +1,18 @@
-module Api exposing (PostPhotoMetaRequest, encodePostPhotoMetaRequest, encodeUpdatePhotoMetaRequest, getImages, postPhotoMeta, updatePhotoMeta, uploadPhotoData, urlPrefix)
+module Api exposing
+    ( getImages
+    , PostPhotoMetaRequest, postPhotoMeta
+    , uploadPhotoData
+    , updatePhotoMeta
+    )
+
+{-|
+
+@docs getImages
+@docs PostPhotoMetaRequest, postPhotoMeta
+@docs uploadPhotoData
+@docs updatePhotoMeta
+
+-}
 
 import Bytes exposing (Bytes)
 import File exposing (File)

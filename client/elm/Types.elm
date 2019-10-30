@@ -1,8 +1,31 @@
-module Types exposing (PhotoId, PhotoMeta, UploadStatus(..), ZonedTime, encodeUploadStatus, photoMetaDecoder, uploadStatusDecoder)
+module Types exposing
+    ( ZonedTime
+    , UploadStatus(..), encodeUploadStatus, uploadStatusDecoder
+    , PhotoId, PhotoMeta, photoMetaDecoder
+    , CognitoErrorInterface, cognitoErrorInterfaceDecoder
+    , SignupResultUser, signupResultUserDecoder
+    , VerifyResponse(..), verifyResponseDecoder
+    , AuthenticationFailureCode, AuthenticationFailure, authenticationFailureDecoder, authenticationFailureCodeToString
+    , SignupResponse(..), SignupResultInterface, signupResponseDecoder, signupResultInterfaceDecoder
+    )
 
+{-|
+
+@docs ZonedTime
+@docs UploadStatus, encodeUploadStatus, uploadStatusDecoder
+@docs PhotoId, PhotoMeta, photoMetaDecoder
+@docs CognitoErrorInterface, cognitoErrorInterfaceDecoder
+@docs SignupResponse signupResponseDecoder, SignupResultInterface signupResultInterfaceDecoder, SignupResultUser, signupResultUserDecoder
+@docs VerifyResponse, verifyResponseDecoder
+@docs AuthenticationFailureCode, AuthenticationFailure, authenticationFailureDecoder, authenticationFailureCodeToString
+
+-}
+
+import Dict
 import Json.Decode as JD
 import Json.Encode as JE
 import Time exposing (Posix, Zone)
+import Tuple
 
 
 type alias ZonedTime =
@@ -71,3 +94,149 @@ photoMetaDecoder =
         (JD.field "timestamp" JD.int)
         (JD.field "type" JD.string)
         (JD.maybe <| JD.field "signedUrl" JD.string)
+
+
+type SignupResponse
+    = SignupError CognitoErrorInterface
+    | SignupResult SignupResultInterface
+
+
+type alias CognitoErrorInterface =
+    { code : String
+    , message : String
+    }
+
+
+type alias SignupResultInterface =
+    { user : SignupResultUser
+    }
+
+
+cognitoErrorInterfaceDecoder : JD.Decoder CognitoErrorInterface
+cognitoErrorInterfaceDecoder =
+    JD.map2 CognitoErrorInterface
+        (JD.field "code" JD.string)
+        (JD.field "message" JD.string)
+
+
+signupErrorDecoder : JD.Decoder (Maybe SignupResponse)
+signupErrorDecoder =
+    JD.nullable <|
+        JD.andThen (JD.succeed << SignupError) cognitoErrorInterfaceDecoder
+
+
+signupResultInterfaceDecoder : JD.Decoder SignupResultInterface
+signupResultInterfaceDecoder =
+    JD.map SignupResultInterface
+        (JD.field "user" signupResultUserDecoder)
+
+
+signupResultDecoder : JD.Decoder (Maybe SignupResponse)
+signupResultDecoder =
+    JD.nullable <|
+        JD.andThen (JD.succeed << SignupResult) signupResultInterfaceDecoder
+
+
+signupResponseDecoder : JD.Decoder SignupResponse
+signupResponseDecoder =
+    JD.map2 Tuple.pair
+        (JD.field "error" signupErrorDecoder)
+        (JD.field "result" signupResultDecoder)
+        |> JD.andThen
+            (\t ->
+                case t of
+                    ( Just e, Nothing ) ->
+                        JD.succeed e
+
+                    ( Nothing, Just r ) ->
+                        JD.succeed r
+
+                    _ ->
+                        JD.fail "Invalid json string."
+            )
+
+
+type alias SignupResultUser =
+    { username : String
+    }
+
+
+signupResultUserDecoder : JD.Decoder SignupResultUser
+signupResultUserDecoder =
+    JD.map SignupResultUser (JD.field "username" JD.string)
+
+
+type VerifyResponse
+    = VerifyError CognitoErrorInterface
+    | VerifyResult
+
+
+verifyErrorDecoder : JD.Decoder (Maybe VerifyResponse)
+verifyErrorDecoder =
+    JD.nullable <|
+        JD.andThen (JD.succeed << VerifyError) cognitoErrorInterfaceDecoder
+
+
+verifyResultDecoder : JD.Decoder (Maybe VerifyResponse)
+verifyResultDecoder =
+    JD.nullable <| JD.succeed VerifyResult
+
+
+verifyResponseDecoder =
+    JD.map2 Tuple.pair
+        (JD.field "error" verifyErrorDecoder)
+        (JD.field "result" verifyResultDecoder)
+        |> JD.andThen
+            (\t ->
+                case t of
+                    ( Just e, Nothing ) ->
+                        JD.succeed e
+
+                    ( Nothing, Just r ) ->
+                        JD.succeed r
+
+                    _ ->
+                        JD.fail "Invalid json string."
+            )
+
+
+type AuthenticationFailureCode
+    = NotAuthorizedException
+    | InvalidParameterException
+
+
+authenticationFailureCodeToString : AuthenticationFailureCode -> String
+authenticationFailureCodeToString c =
+    case c of
+        InvalidParameterException ->
+            "InvalidParameterException"
+
+        _ ->
+            "NotAuthorizedException"
+
+
+authenticationFailureCodeDecoder : JD.Decoder AuthenticationFailureCode
+authenticationFailureCodeDecoder =
+    JD.string
+        |> JD.andThen
+            (\s ->
+                case s of
+                    "InvalidParameterException" ->
+                        JD.succeed InvalidParameterException
+
+                    _ ->
+                        JD.succeed NotAuthorizedException
+            )
+
+
+type alias AuthenticationFailure =
+    { code : AuthenticationFailureCode
+    , message : String
+    }
+
+
+authenticationFailureDecoder : JD.Decoder AuthenticationFailure
+authenticationFailureDecoder =
+    JD.map2 AuthenticationFailure
+        (JD.field "code" authenticationFailureCodeDecoder)
+        (JD.field "message" JD.string)

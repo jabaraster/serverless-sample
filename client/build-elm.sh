@@ -1,15 +1,11 @@
 #!/bin/sh
-elm-format elm/Api.elm --output elm/Api.elm --yes \
-  && elm-format elm/Index.elm --output elm/Index.elm --yes \
-  && elm-format elm/RemoteResource.elm --output elm/RemoteResource.elm --yes \
-  && elm-format elm/Types.elm --output elm/Types.elm --yes \
-  && elm-format elm/Cognito.elm --output elm/Cognito.elm --yes \
+./format-elm.sh \
   && elm make elm/Index.elm --output=.work/index.js \
   && uglifyjs .work/index.js --mangle --output dist/js/index.min.js --source-map --compress 'pure_funcs="Elm.Index.init,F2,F3,F4,F5,F6,F7,F8,F9,A2,A3,A4,A5,A6,A7,A8,A9",pure_getters,keep_fargs=false,unsafe_comps,unsafe' \
   && aws s3 cp dist/js/index.min.js s3://jabara-serverless-app-web/js/index.min.js \
   && aws s3 cp dist/js/index.min.js.map s3://jabara-serverless-app-web/js/index.min.js.map \
   && tsc \
-  && browserify .work/cognito.js | uglifyjs --mangle --output dist/js/cognito.min.js --source-map --compress \
-  && aws s3 cp dist/js/cognito.min.js s3://jabara-serverless-app-web/js/cognito.min.js \
-  && aws s3 cp dist/js/cognito.min.js.map s3://jabara-serverless-app-web/js/cognito.min.js.map \
+  && browserify .work/app.js | uglifyjs --mangle --output dist/js/app.min.js --source-map --compress \
+  && aws s3 cp dist/js/app.min.js s3://jabara-serverless-app-web/js/app.min.js \
+  && aws s3 cp dist/js/app.min.js.map s3://jabara-serverless-app-web/js/app.min.js.map \
   && echo finish!

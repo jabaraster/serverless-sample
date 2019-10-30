@@ -1,4 +1,4 @@
-module Index exposing (Model, Msg(..), Page(..), init, main, parseUrl, subscriptions, update, view)
+module Index exposing (Model, Msg(..), PageState(..), flip, formatComma, imageUrl, imageUrlBase, init, main, routing, subscriptions, update, view, viewForPage, viewMenuLink, viewPreview)
 
 import Api
 import Browser exposing (Document, UrlRequest(..))
@@ -11,12 +11,14 @@ import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import Http
+import Json.Decode as JD
+import Json.Encode as JE
 import List.Extra as LE
 import List.Split as LS
 import RemoteResource exposing (RemoteResource)
 import Task
 import Time exposing (Posix)
-import Types exposing (PhotoMeta, UploadStatus(..))
+import Types exposing (AuthenticationFailure, AuthenticationFailureCode(..), PhotoMeta, SignupResponse(..), UploadStatus(..), VerifyResponse(..))
 import Url exposing (Url)
 import Url.Parser as UP exposing ((</>))
 
@@ -33,97 +35,174 @@ main =
         }
 
 
-type Page
+type PageState
     = HomePage
+    | SignupPage
     | LoginPage
     | UploadPage
     | SettingsPage
+    | VerificationPage
     | NotFoundPage
 
 
 type alias Model =
-    { key : Key
-    , page : Page
+    { -- General
+      key : Key
+    , pageState : PageState
+    , errorMessages : List String
+    , communicating : Bool
+
+    -- Images
     , images : RemoteResource (List PhotoMeta)
+
+    -- Photo select
     , selectedImageFile : Maybe File
     , selectedImageUrl : String
+
+    -- Upload photo process
     , uploadPhotoMeta : Maybe PhotoMeta
+
+    -- Singup or login
+    , username : String
+    , email : String
+    , password : String
+    , signupErrorMessage : String
+    , verificationCode : String
+    , loggedIn : Bool
     }
 
 
+addErrorMessage : String -> Model -> Model
+addErrorMessage s model =
+    { model | errorMessages = s :: model.errorMessages }
+
+
 type Msg
-    = LinkClicked UrlRequest
+    = -- General
+      LinkClicked UrlRequest
     | UrlChanged Url
+      -- Images load
+    | LoadImages
     | ImagesLoaded (Result Http.Error (List PhotoMeta))
     | ImageRequested
+      -- Photo selecs
     | ImageSelected File
     | SelectedImageLoaded String
+      -- Upload photo process
     | StartUploadPhotoProcess
     | PostPhotoMetaCompleted (Result Http.Error PhotoMeta)
     | SelectedImageBytesLoaded Bytes
     | CurrentTimeGet Posix
     | UploadPhotoCompleted (Result Http.Error ())
     | UploadStatusUpdated (Result Http.Error ())
+      -- Upload photo process
+    | UsernameChange String
+    | EmailChange String
+    | PasswordChange String
+      -- Signup
+    | Signup
+    | SignupCallback (Result JD.Error SignupResponse)
+    | VerificationCodeChange String
+    | Verify
+    | VerifyCallback (Result JD.Error VerifyResponse)
+      -- Login
+    | Authenticate
+    | AuthenticateOnSuccess JE.Value
+    | AuthenticateOnFailure (Result JD.Error AuthenticationFailure)
+    | AuthenticateNewPasswordRequired JE.Value
+    | LoggedInCallback (Result JD.Error Bool)
+    | Logout
+    | LogoutCallback JE.Value
 
 
 init : () -> Url -> Key -> ( Model, Cmd Msg )
 init _ url key =
-    let
-        page =
-            parseUrl url
+    ( { key = key
+      , pageState = routing url
+      , errorMessages = []
+      , communicating = False
+      , images = RemoteResource.empty
+      , selectedImageFile = Nothing
+      , selectedImageUrl = ""
+      , uploadPhotoMeta = Nothing
+      , username = ""
+      , email = ""
+      , password = ""
+      , signupErrorMessage = ""
+      , verificationCode = ""
+      , loggedIn = False
+      }
+    , Cognito.loggedIn ()
+    )
 
-        model =
-            { key = key
-            , page = page
-            , images = RemoteResource.emptyLoading
-            , selectedImageFile = Nothing
-            , selectedImageUrl = ""
-            , uploadPhotoMeta = Nothing
-            }
-    in
+
+basePath =
+    "index.html"
+
+
+pageStateToUrl : PageState -> String
+pageStateToUrl page =
     case page of
         HomePage ->
-            ( model
-            , Api.getImages ImagesLoaded
+            "/" ++ basePath
+
+        SignupPage ->
+            "/" ++ basePath ++ "#signup"
+
+        LoginPage ->
+            "/" ++ basePath ++ "#login"
+
+        UploadPage ->
+            "/" ++ basePath ++ "#upload"
+
+        SettingsPage ->
+            "/" ++ basePath ++ "#settings"
+
+        VerificationPage ->
+            "/" ++ basePath ++ "#verification"
+
+        NotFoundPage ->
+            "/" ++ basePath
+
+
+routing : Url -> PageState
+routing url =
+    Maybe.withDefault NotFoundPage <|
+        UP.parse
+            (UP.oneOf
+                [ UP.s basePath
+                    </> UP.fragment
+                            (\mv ->
+                                case mv of
+                                    Just "login" ->
+                                        LoginPage
+
+                                    Just "signup" ->
+                                        SignupPage
+
+                                    Just "upload" ->
+                                        UploadPage
+
+                                    Just "settings" ->
+                                        SettingsPage
+
+                                    Just "verification" ->
+                                        VerificationPage
+
+                                    Just "" ->
+                                        HomePage
+
+                                    Just _ ->
+                                        NotFoundPage
+
+                                    Nothing ->
+                                        HomePage
+                            )
+                , UP.map HomePage <| UP.s basePath
+                , UP.map HomePage UP.top
+                ]
             )
-
-        _ ->
-            ( model, Cmd.none )
-
-
-parseUrl : Url -> Page
-parseUrl url =
-    Debug.log "" <|
-        Maybe.withDefault NotFoundPage <|
-            UP.parse
-                (UP.oneOf
-                    [ UP.s "index.html"
-                        </> UP.fragment
-                                (\mv ->
-                                    case mv of
-                                        Just "login" ->
-                                            LoginPage
-
-                                        Just "upload" ->
-                                            UploadPage
-
-                                        Just "settings" ->
-                                            SettingsPage
-
-                                        Just "" ->
-                                            HomePage
-
-                                        Just _ ->
-                                            NotFoundPage
-
-                                        Nothing ->
-                                            HomePage
-                                )
-                    , UP.map HomePage <| UP.s "index.html"
-                    , UP.map HomePage UP.top
-                    ]
-                )
-                url
+            url
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -132,29 +211,20 @@ update msg model =
         LinkClicked urlRequest ->
             case urlRequest of
                 Internal url ->
-                    ( model, Nav.pushUrl model.key (Url.toString url) )
+                    ( model
+                    , Nav.pushUrl model.key (Url.toString url)
+                    )
 
                 External href ->
                     ( model, Nav.load href )
 
         UrlChanged url ->
-            let
-                page =
-                    parseUrl url
+            ( { model | pageState = routing url }, Cognito.loggedIn () )
 
-                newModel =
-                    { model | page = page }
-            in
-            case page of
-                HomePage ->
-                    let
-                        ( newRr, cmd ) =
-                            RemoteResource.loadIfNecessary model.images <| Api.getImages ImagesLoaded
-                    in
-                    ( { newModel | images = newRr }, cmd )
-
-                _ ->
-                    ( newModel, Cmd.none )
+        LoadImages ->
+            ( { model | images = RemoteResource.startLoading model.images }
+            , Api.getImages ImagesLoaded
+            )
 
         ImagesLoaded res ->
             ( { model | images = RemoteResource.updateData model.images res }, Cmd.none )
@@ -178,14 +248,16 @@ update msg model =
                     ( model, Cmd.none )
 
                 Just file ->
-                    ( model
+                    ( { model
+                        | communicating = True
+                      }
                     , Api.postPhotoMeta { imageType = File.mime file, size = File.size file } PostPhotoMetaCompleted
                     )
 
         PostPhotoMetaCompleted res ->
             case model.selectedImageFile of
                 Nothing ->
-                    ( model, Cmd.none )
+                    ( { model | communicating = False }, Cmd.none )
 
                 Just file ->
                     case res of
@@ -200,7 +272,7 @@ update msg model =
         SelectedImageBytesLoaded data ->
             case model.uploadPhotoMeta of
                 Nothing ->
-                    ( model, Cmd.none )
+                    ( { model | communicating = False }, Cmd.none )
 
                 Just meta ->
                     ( model
@@ -221,36 +293,188 @@ update msg model =
                     )
 
         UploadStatusUpdated _ ->
-            case model.uploadPhotoMeta of
-                Nothing ->
-                    ( { model
+            let
+                newModel =
+                    { model
                         | selectedImageFile = Nothing
                         , selectedImageUrl = ""
                         , uploadPhotoMeta = Nothing
+                        , communicating = False
+                    }
+            in
+            case model.uploadPhotoMeta of
+                Nothing ->
+                    ( newModel, Cmd.none )
+
+                Just meta ->
+                    ( { newModel
+                        | images = RemoteResource.map ((::) meta) model.images
+                      }
+                    , Nav.pushUrl model.key <| pageStateToUrl HomePage
+                    )
+
+        UsernameChange v ->
+            ( { model | username = v }, Cmd.none )
+
+        EmailChange v ->
+            ( { model | email = v }, Cmd.none )
+
+        PasswordChange v ->
+            ( { model | password = v }, Cmd.none )
+
+        Signup ->
+            ( { model | communicating = True }
+            , Cognito.signup
+                { username = model.username
+                , email = model.email
+                , password = model.password
+                }
+            )
+
+        SignupCallback res ->
+            let
+                newModel =
+                    { model | communicating = False }
+            in
+            case res of
+                Err err ->
+                    ( addErrorMessage (JD.errorToString err) newModel, Cmd.none )
+
+                Ok (SignupError err) ->
+                    ( { newModel | signupErrorMessage = err.message }, Cmd.none )
+
+                Ok (SignupResult _) ->
+                    ( { newModel | signupErrorMessage = "" }
+                    , Nav.pushUrl model.key <| pageStateToUrl VerificationPage
+                    )
+
+        VerificationCodeChange v ->
+            ( { model | verificationCode = v }, Cmd.none )
+
+        Verify ->
+            ( { model | communicating = True }
+            , Cognito.verify { username = model.username, verificationCode = model.verificationCode }
+            )
+
+        VerifyCallback res ->
+            let
+                newModel =
+                    { model | communicating = False }
+            in
+            case res of
+                Err err ->
+                    ( addErrorMessage (JD.errorToString err) newModel, Cmd.none )
+
+                Ok (VerifyError err) ->
+                    ( { newModel | signupErrorMessage = err.message }, Cmd.none )
+
+                Ok VerifyResult ->
+                    ( { newModel
+                        | signupErrorMessage = ""
+                        , username = ""
+                        , email = ""
+                        , password = ""
+                        , verificationCode = ""
+                      }
+                    , Nav.pushUrl model.key <| pageStateToUrl LoginPage
+                    )
+
+        Authenticate ->
+            ( { model | communicating = True }
+            , Cognito.authenticate { email = model.email, password = model.password }
+            )
+
+        AuthenticateOnSuccess v ->
+            ( { model
+                | communicating = False
+                , loggedIn = True
+                , username = ""
+                , email = ""
+                , password = ""
+                , signupErrorMessage = ""
+              }
+            , Nav.pushUrl model.key <| pageStateToUrl HomePage
+            )
+
+        AuthenticateOnFailure res ->
+            case res of
+                Err err ->
+                    ( { model
+                        | communicating = False
+                        , signupErrorMessage = JD.errorToString err
                       }
                     , Cmd.none
                     )
 
-                Just meta ->
-                    let
-                        wm =
-                            { model
-                                | selectedImageFile = Nothing
-                                , selectedImageUrl = ""
-                                , uploadPhotoMeta = Nothing
-                            }
-                    in
-                    ( { wm | images = RemoteResource.map (flip (++) [ meta ]) model.images }
-                    , Cmd.batch
-                        [ Cognito.signup { username = "jabara", email = "ah@jabara.info", password = "pass" }
-                        , Nav.pushUrl model.key "/index.html"
-                        ]
+                Ok fail ->
+                    ( { model
+                        | communicating = False
+                        , signupErrorMessage = Types.authenticationFailureCodeToString fail.code ++ ": " ++ fail.message
+                      }
+                    , Cmd.none
                     )
+
+        AuthenticateNewPasswordRequired v ->
+            ( { model | communicating = False, signupErrorMessage = JE.encode 0 v }, Cmd.none )
+
+        LoggedInCallback res ->
+            case res of
+                Err err ->
+                    ( addErrorMessage (JD.errorToString err) model, Cmd.none )
+
+                Ok True ->
+                    case model.pageState of
+                        HomePage ->
+                            let
+                                ( rr, cmd ) =
+                                    RemoteResource.loadIfNecessary model.images <| Api.getImages ImagesLoaded
+                            in
+                            ( { model | images = rr, loggedIn = True }, cmd )
+
+                        _ ->
+                            ( { model | loggedIn = True }, Cmd.none )
+
+                Ok False ->
+                    case model.pageState of
+                        LoginPage ->
+                            ( model, Cmd.none )
+
+                        SignupPage ->
+                            ( model, Cmd.none )
+
+                        VerificationPage ->
+                            ( model, Cmd.none )
+
+                        _ ->
+                            ( model, Nav.pushUrl model.key <| pageStateToUrl LoginPage )
+
+        Logout ->
+            ( { model
+                | communicating = True
+              }
+            , Cognito.logout ()
+            )
+
+        LogoutCallback _ ->
+            ( { model
+                | loggedIn = False
+                , communicating = False
+              }
+            , Nav.pushUrl model.key <| pageStateToUrl LoginPage
+            )
 
 
 subscriptions : Model -> Sub Msg
-subscriptions _ =
-    Sub.none
+subscriptions model =
+    Sub.batch
+        [ Cognito.signupCallback (JD.decodeValue Types.signupResponseDecoder) |> Sub.map SignupCallback
+        , Cognito.verifyCallback (JD.decodeValue Types.verifyResponseDecoder) |> Sub.map VerifyCallback
+        , Cognito.authenticateOnSuccess AuthenticateOnSuccess
+        , Cognito.authenticateOnFailure (JD.decodeValue Types.authenticationFailureDecoder) |> Sub.map AuthenticateOnFailure
+        , Cognito.authenticateNewPasswordRequired AuthenticateNewPasswordRequired
+        , Cognito.loggedInCallback (JD.decodeValue JD.bool) |> Sub.map LoggedInCallback
+        , Cognito.logoutCallback LogoutCallback
+        ]
 
 
 view : Model -> Document Msg
@@ -259,16 +483,32 @@ view model =
         doc =
             viewForPage model
 
+        loading =
+            if isLoading model then
+                [ span [ class "fas fa-spinner loading loading-icon" ] [] ]
+
+            else
+                []
+
+        menus =
+            [ ( model.loggedIn, viewMenuLink { currentPageState = model.pageState, menuPageState = HomePage, labelText = "Home" } )
+            , ( model.loggedIn, viewMenuLink { currentPageState = model.pageState, menuPageState = UploadPage, labelText = "Upload" } )
+            , ( model.loggedIn, viewMenuLink { currentPageState = model.pageState, menuPageState = SettingsPage, labelText = "Settings" } )
+            , ( not model.loggedIn, viewMenuLink { currentPageState = model.pageState, menuPageState = SignupPage, labelText = "Signup" } )
+            , ( not model.loggedIn, viewMenuLink { currentPageState = model.pageState, menuPageState = LoginPage, labelText = "Login" } )
+            , ( model.loggedIn
+              , li [ class "pure-menu-item" ]
+                    [ a [ onClick Logout, class "pure-menu-link", href "#logout" ] [ text "Logout" ] ]
+              )
+            ]
+
         header =
             div [ class "header" ]
                 [ div [ class "pure-menu pure-menu-horizontal" ]
                     [ a [ class "pure-menu-heading", href "" ] [ text "Photo Gallery" ]
-                    , ul [ class "pure-menu-list" ]
-                        [ li [ class "pure-menu-item pure-menu-selected" ] [ a [ class "pure-menu-link", href "#" ] [ text "Home" ] ]
-                        , li [ class "pure-menu-item" ] [ a [ class "pure-menu-link", href "#upload" ] [ text "Upload" ] ]
-                        , li [ class "pure-menu-item" ] [ a [ class "pure-menu-link", href "#settings" ] [ text "Settings" ] ]
-                        , li [ class "pure-menu-item" ] [ a [ class "pure-menu-link", href "#login" ] [ text "Login" ] ]
-                        ]
+                    , ul [ class "pure-menu-list" ] <|
+                        List.map Tuple.second <|
+                            List.filter Tuple.first menus
                     ]
                 ]
 
@@ -285,25 +525,39 @@ view model =
     in
     { title = doc.title
     , body =
-        [ header, textHead, div [ class "pure-g" ] doc.body, footer ]
+        loading ++ [ header, textHead, div [ class "pure-g" ] doc.body, footer ]
     }
+
+
+viewMenuLink :
+    { currentPageState : PageState
+    , menuPageState : PageState
+    , labelText : String
+    }
+    -> Html Msg
+viewMenuLink arg =
+    li [ class "pure-menu-item", classList [ ( "pure-menu-selected", arg.currentPageState == arg.menuPageState ) ] ]
+        [ a [ class "pure-menu-link", href <| pageStateToUrl arg.menuPageState ] [ text arg.labelText ] ]
 
 
 viewForPage : Model -> Document Msg
 viewForPage model =
-    case model.page of
+    case model.pageState of
         HomePage ->
             { title = "Home"
             , body =
-                List.map
-                    (\image ->
-                        div [ class "photo pure-u-1-3 pure-u-md-1-3 pure-u-lg-1-3 pure-u-xl-1-3" ]
-                            [ a [ href <| imageUrl image, target "_blank" ]
-                                [ img [ src <| imageUrl image ] []
+                [ div [] <|
+                    List.map
+                        (\image ->
+                            div [ class "photo pure-u-1-3 pure-u-md-1-3 pure-u-lg-1-3 pure-u-xl-1-3" ]
+                                [ a [ href <| imageUrl image, target "_blank" ]
+                                    [ img [ src <| imageUrl image ] []
+                                    ]
                                 ]
-                            ]
-                    )
-                    (RemoteResource.value [] model.images)
+                        )
+                        (RemoteResource.value [] model.images)
+                , button [ class "pure-button", onClick LoadImages ] [ span [ class "fas fa-sync" ] [], text "Reload" ]
+                ]
             }
 
         UploadPage ->
@@ -327,7 +581,51 @@ viewForPage model =
 
         LoginPage ->
             { title = "Login"
-            , body = [ text "Login" ]
+            , body =
+                [ div [ class "pure-u-1 form-box l-box" ]
+                    [ h2 [] [ text "Login" ]
+                    , div [ class "pure-form pure-form-stacked" ]
+                        [ viewInput { type_ = "text", value = model.email, inputChange = EmailChange, placeholder = "Username of Email" }
+                        , viewPassword model.password
+                        , button [ onClick Authenticate, class "pure-button pure-button-primary" ] [ text "Singup" ]
+                        ]
+                    , hr [] []
+                    , span [ class "error" ] [ text model.signupErrorMessage ]
+                    ]
+                ]
+            }
+
+        SignupPage ->
+            { title = "Signup"
+            , body =
+                [ div [ class "pure-u-1 form-box l-box" ]
+                    [ h2 [] [ text "Signup" ]
+                    , div [ class "pure-form pure-form-stacked" ]
+                        [ viewInput { type_ = "text", value = model.username, inputChange = UsernameChange, placeholder = "Username" }
+                        , viewInput { type_ = "text", value = model.email, inputChange = EmailChange, placeholder = "Email" }
+                        , viewPassword model.password
+                        , button [ onClick Signup, class "pure-button pure-button-primary" ] [ text "Singup" ]
+                        ]
+                    , hr [] []
+                    , span [ class "error" ] [ text model.signupErrorMessage ]
+                    ]
+                ]
+            }
+
+        VerificationPage ->
+            { title = "Verification"
+            , body =
+                [ div [ class "pure-u-1 form-box l-box" ]
+                    [ h2 [] [ text "Signup verification" ]
+                    , p [] [ text "Verification sent your email address." ]
+                    , div [ class "pure-form pure-form-stacked" ]
+                        [ input [ type_ "text", value model.verificationCode, onInput VerificationCodeChange, placeholder "Verification code" ] []
+                        , button [ onClick Verify, class "pure-button pure-button-primary" ] [ text "Confirm" ]
+                        ]
+                    , hr [] []
+                    , span [ class "error" ] [ text model.signupErrorMessage ]
+                    ]
+                ]
             }
 
         NotFoundPage ->
@@ -367,3 +665,25 @@ formatComma =
 flip : (a -> b -> c) -> b -> a -> c
 flip f b a =
     f a b
+
+
+isLoading : Model -> Bool
+isLoading model =
+    model.images.loading
+        || model.communicating
+
+
+viewInput :
+    { value : String
+    , type_ : String
+    , placeholder : String
+    , inputChange : String -> Msg
+    }
+    -> Html Msg
+viewInput arg =
+    label [] [ input [ onInput arg.inputChange, value arg.value, type_ arg.type_, placeholder arg.placeholder ] [] ]
+
+
+viewPassword : String -> Html Msg
+viewPassword val =
+    viewInput { type_ = "password", value = val, inputChange = PasswordChange, placeholder = "Password" }
