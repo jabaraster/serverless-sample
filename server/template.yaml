@@ -16,7 +16,8 @@ Resources:
   PhotoBucket:
     Type: AWS::S3::Bucket
     Properties:
-      WebsiteConfiguration: {}
+      WebsiteConfiguration:
+        IndexDocument: index.html
       CorsConfiguration:
         CorsRules:
           -
