@@ -113,6 +113,8 @@ Resources:
       Runtime: nodejs10.x
       Description : ""
       Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref PhotoBucket
         - DynamoDBCrudPolicy:
             TableName: !Ref PhotoTable
       Events:
