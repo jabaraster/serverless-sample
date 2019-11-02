@@ -117,13 +117,16 @@ export function loggedIn(ports: IPorts): () => void {
             return;
         }
         currentUser.getSession((err: any, res: any) => {
-            if (!err) {
+            if (res) {
+                ports.loggedInCallback.send(true);
+                return;
+            }
+            if (err) {
                 console.log("!!! error !!!");
                 console.log(err);
                 ports.loggedInCallback.send(false);
                 return;
             }
-            ports.loggedInCallback.send(true);
         });
     };
 }

@@ -649,7 +649,7 @@ viewPreview mFile url =
 
 
 imageUrlBase =
-    "https://jabara-serverless-app-photos.s3-ap-northeast-1.amazonaws.com/"
+    "https://jabara-serverless-app-photobucket-18s89yqnj4w3.s3-ap-northeast-1.amazonaws.com/"
 
 
 imageUrl : PhotoMeta -> String

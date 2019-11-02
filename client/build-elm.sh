@@ -9,3 +9,4 @@
   && aws s3 cp dist/js/app.min.js s3://jabara-serverless-app-web/js/app.min.js \
   && aws s3 cp dist/js/app.min.js.map s3://jabara-serverless-app-web/js/app.min.js.map \
   && echo finish!
+osascript -e 'display notification "Build finish!" with title ""'
