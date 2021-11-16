@@ -18,7 +18,7 @@
     "@types/node": "12.0.8",
     "@types/uuid": "^3.4.5",
     "aws-lambda": "^0.1.2",
-    "aws-sdk": "^2.477.0",
+    "aws-sdk": "^2.814.0",
     "espower-typescript": "9.0.2",
     "nyc": "14.1.1",
     "systemjs": "^3.1.6",
